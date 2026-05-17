@@ -1,0 +1,38 @@
+# 환경변수 / 비밀
+.env
+.env.local
+*.key
+*.pem
+secrets/
+
+# 파이썬
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 노드
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Jekyll / Hugo 빌드 산출물
+_site/
+.jekyll-cache/
+.jekyll-metadata
+public/
+resources/_gen/
+
+# OS / 에디터
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# 로그
+*.log
+logs/
