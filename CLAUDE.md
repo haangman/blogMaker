@@ -8,20 +8,23 @@
 1. **자연스러움** — AI 티가 나지 않게, 한 사람의 목소리/문체로 일관되게.
 2. **자동화** — 글 생성·수정 시마다 자동으로 commit & push 되어 GitHub Pages가 즉시 업데이트.
 
-## 두 리포 구조 (중요)
+## 멀티블로그 구조 (V4)
 
-이 프로젝트는 **두 개의 GitHub 리포지토리**로 나뉜다.
+이 프로젝트는 **하나의 blogMaker (코드)** 가 **여러 개의 Jekyll 블로그**를 운영한다.
 
 | 리포 | 역할 | 로컬 경로 |
 |---|---|---|
-| **blogMaker** (이 리포) | 블로그를 자동 생성하는 **코드**가 사는 곳. 트렌드 수집기·글 생성기·발행기 모두 여기 있다. | `C:\Users\김은희\Downloads\blogMaker` |
-| **J-Blog** | 실제 **블로그(Jekyll 사이트)** 가 사는 곳. GitHub Pages가 이 리포를 빌드해서 https://haangman.github.io/J-Blog/ 로 발행한다. | `C:\Users\김은희\Downloads\J-Blog` (blogMaker의 sibling) |
+| **blogMaker** | 자동 생성·발행 코드. 모든 블로그를 한 사이클에서 순차 처리. | `C:\Users\김은희\Downloads\blogMaker` |
+| **J-Blog** (id: `trends`) | 일상 트렌드 블로그 (HN/Reddit/Google News/한국 매체). | `C:\Users\김은희\Downloads\J-Blog` → https://haangman.github.io/J-Blog/ |
+| **J-Blog-AI** (id: `ai`) | AI 기술 블로그 (arXiv/HF Papers/Reddit ML+LocalLLaMA + 백로그). | `C:\Users\김은희\Downloads\J-Blog-AI` → https://haangman.github.io/J-Blog-AI/ |
 
-두 리포는 **로컬에서 sibling 디렉토리**(같은 부모 폴더)에 둔다. 발행기(publisher)는 상대경로 `../J-Blog/_posts/`에 글을 쓰고, 그 리포에서 `git add/commit/push`를 실행한다.
+세 리포 모두 **로컬 sibling 디렉토리**. publisher 는 BlogProfile.repo_name 으로 sanity check (디렉토리 이름 일치 안 하면 abort — 리포 혼동 방지).
 
-> 글을 새로 만들거나 수정한 변화는 **J-Blog** 에 commit/push.
-> 생성기·수집기 등 코드 변화는 **blogMaker** 에 commit/push.
-> 둘은 별개의 git 히스토리를 가진다.
+> 글 변화는 해당 블로그 리포에 commit/push.
+> 코드 변화는 blogMaker 에 commit/push.
+> 세 git 히스토리가 모두 독립.
+
+블로그 정의는 `config/blogs.yaml`. 새 블로그 추가는 yaml 한 줄 + 필요한 sources/categories/persona 파일만 만들면 자동으로 사이클에 포함.
 
 ## 핵심 요구사항
 

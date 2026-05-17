@@ -91,6 +91,11 @@ def attach_images(article: ArticleDraft, cluster: TopicCluster) -> None:
         return
 
     images: list[ImageRef] = []
+    used_keywords: set[str] = set()
+    used_signatures: set[str] = set()
+
+    def _signature(img: ImageRef) -> str:
+        return f"{img.local_path.name if img.local_path else ''}|{img.credit}"
 
     # 헤더 이미지 (1장) — 글 도입부를 보고 키워드 결정 (장면 매칭 정확도 ↑)
     header_kw = _header_keywords(cluster, body_excerpt=article.body_markdown[:600])
@@ -98,13 +103,29 @@ def attach_images(article: ArticleDraft, cluster: TopicCluster) -> None:
     header = _try_fetch_one(header_kw)
     if header:
         images.append(header)
+        used_keywords.add(header_kw.lower())
+        used_signatures.add(_signature(header))
     else:
         log.info("images.header_not_found", q=header_kw)
 
-    # 본문 마커 이미지 (0~3장)
+    # 본문 마커 이미지 (0~3장) — 헤더 키워드/사진과 중복 회피
     markers = extract_markers(article.body_markdown)
     log.info("images.markers_found", n=len(markers))
-    body_images = fetch_for_markers(markers, limit=3)
+    body_images: list[ImageRef] = []
+    for img in fetch_for_markers(markers, limit=5):
+        kw = (img.marker_keyword or "").lower()
+        sig = _signature(img)
+        if kw and kw in used_keywords:
+            log.info("images.body_dedup_keyword", keyword=kw)
+            continue
+        if sig in used_signatures:
+            log.info("images.body_dedup_signature", keyword=kw)
+            continue
+        body_images.append(img)
+        used_keywords.add(kw)
+        used_signatures.add(sig)
+        if len(body_images) >= 3:
+            break
     images.extend(body_images)
 
     article.images = images

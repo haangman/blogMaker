@@ -61,12 +61,13 @@ def record_attempt(
     gate_score: float | None,
     gate_failures: list[str],
     outcome: str,
+    blog_id: str | None = None,
 ) -> None:
     conn.execute(
         """
         INSERT INTO article_attempts
-        (cluster_simhash, attempt_num, gate_score, gate_failures, outcome, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        (cluster_simhash, attempt_num, gate_score, gate_failures, outcome, created_at, blog_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             to_signed64(cluster_simhash) if cluster_simhash is not None else None,
@@ -75,6 +76,7 @@ def record_attempt(
             json.dumps(gate_failures, ensure_ascii=False),
             outcome,
             iso_now(),
+            blog_id,
         ),
     )
 
@@ -91,13 +93,14 @@ def record_llm_call(
     duration_ms: int | None,
     success: bool,
     error: str | None = None,
+    blog_id: str | None = None,
 ) -> None:
     conn.execute(
         """
         INSERT INTO llm_calls
         (purpose, model, input_tokens, output_tokens, cached_tokens,
-         cost_usd, duration_ms, success, error, at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         cost_usd, duration_ms, success, error, at, blog_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             purpose,
@@ -110,6 +113,7 @@ def record_llm_call(
             1 if success else 0,
             error,
             iso_now(),
+            blog_id,
         ),
     )
 

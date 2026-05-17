@@ -75,6 +75,7 @@ def publish(
             slug,
             header_relpath=header_relpath,
             body_marker_paths=body_marker_paths,
+            categories_file=blog.categories_file,
         ),
         encoding="utf-8",
     )

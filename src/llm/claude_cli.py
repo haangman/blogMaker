@@ -38,6 +38,10 @@ class CycleQuotaExceeded(ClaudeCLIError):
 # 사이클 시작 시 reset_cycle_counter() 로 0 으로 초기화.
 _cycle_call_count = 0
 
+# 현재 처리 중인 블로그 id — main 이 run_for_blog 시작 시 set.
+# llm_calls 테이블에 blog_id 자동 기록용.
+_current_blog_id: str | None = None
+
 
 def reset_cycle_counter() -> None:
     global _cycle_call_count
@@ -46,6 +50,15 @@ def reset_cycle_counter() -> None:
 
 def get_cycle_call_count() -> int:
     return _cycle_call_count
+
+
+def set_current_blog(blog_id: str | None) -> None:
+    global _current_blog_id
+    _current_blog_id = blog_id
+
+
+def get_current_blog() -> str | None:
+    return _current_blog_id
 
 
 @dataclass
@@ -237,6 +250,7 @@ def ask(
                         duration_ms=duration_ms,
                         success=success,
                         error=error,
+                        blog_id=_current_blog_id,
                     )
             except Exception:
                 log.exception("llm.metrics_record_failed")

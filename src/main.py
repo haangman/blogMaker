@@ -29,7 +29,13 @@ from src.cluster.simhash import hamming, simhash64, to_signed64
 from src.collectors.registry import load_active_collectors
 from src.config_loader import DATA_DIR, get_settings
 from src.images import attach_images
-from src.llm import CycleQuotaExceeded, get_cycle_call_count, reset_cycle_counter
+from src.llm import (
+    CycleQuotaExceeded,
+    get_cycle_call_count,
+    health_check,
+    reset_cycle_counter,
+    set_current_blog,
+)
 from src.logging_setup import get_logger, setup_logging
 from src.normalize import normalize_batch
 from src.publisher import publish
@@ -72,7 +78,9 @@ def _publish_one(
 ) -> bool:
     candidate = enrich_with_llm(candidate, categories_file=blog.categories_file)
 
-    if is_recent_duplicate(candidate.simhash, days=settings.duplicate_window_days):
+    if is_recent_duplicate(candidate.simhash,
+                            days=settings.duplicate_window_days,
+                            blog_id=blog.id):
         log.info("article.skip_dup_after_enrich",
                  title=candidate.event_title, simhash=candidate.simhash, blog=blog.id)
         return False
@@ -124,6 +132,7 @@ def _publish_one(
 def run_for_blog(blog: BlogProfile) -> int:
     log = get_logger("main")
     settings = get_settings()
+    set_current_blog(blog.id)
     log.info("blog.start", blog=blog.id, name=blog.name,
              repo=blog.repo_name, articles_per_cycle=blog.articles_per_cycle)
 
@@ -166,6 +175,7 @@ def run_for_blog(blog: BlogProfile) -> int:
         clusters,
         n=blog.articles_per_cycle,
         selector_profile=blog.selector_profile,
+        blog_id=blog.id,
     )
     log.info("blog.candidates", n=len(candidates), blog=blog.id)
     if not candidates:
@@ -294,6 +304,13 @@ def run_cycle(blog_ids: list[str] | None = None) -> int:
             log.info("cycle.start", dry_run=settings.dry_run, ts=iso_now())
             migrate()
             reset_cycle_counter()
+
+            # 부팅 헬스체크 — Claude CLI 세션이 살아있는지. 만료면 사이클 abort.
+            ok, msg = health_check()
+            if not ok:
+                log.error("cycle.health_check_failed", msg=msg)
+                return 0
+            log.info("cycle.health_check_ok")
 
             blogs = enabled_blogs()
             if blog_ids:

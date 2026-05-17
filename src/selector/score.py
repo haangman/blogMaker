@@ -60,24 +60,50 @@ _PROFILE_WEIGHTS: dict[str, tuple[dict[str, float], float]] = {
 IN_CYCLE_SIMHASH_GAP = 5
 
 
-def _category_24h_count() -> Counter:
+def _category_24h_count(blog_id: str | None = None) -> Counter:
     cats: Counter = Counter()
     with connect() as conn:
         since = (now_seoul() - timedelta(hours=24)).isoformat()
-        rows = conn.execute(
-            "SELECT category FROM published WHERE published_at >= ?", (since,)
-        ).fetchall()
+        if blog_id:
+            rows = conn.execute(
+                "SELECT category FROM published WHERE published_at >= ? AND blog_id = ?",
+                (since, blog_id),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT category FROM published WHERE published_at >= ?", (since,)
+            ).fetchall()
     for r in rows:
         cats[r["category"]] += 1
     return cats
 
 
-def is_recent_duplicate(simhash: int, *, days: int | None = None, max_hamming: int = 3) -> bool:
-    """발행 이력 안에서 simhash 매치 검사. days 기본은 settings.duplicate_window_days."""
+def is_recent_duplicate(
+    simhash: int,
+    *,
+    days: int | None = None,
+    max_hamming: int = 3,
+    blog_id: str | None = None,
+) -> bool:
+    """발행 이력 안에서 simhash 매치 검사 (블로그별 필터링).
+
+    days 기본은 settings.duplicate_window_days.
+    blog_id 가 주어지면 그 블로그의 발행만 비교 (cross-blog 오염 방지).
+    """
     if days is None:
         days = get_settings().duplicate_window_days
+    since = (now_seoul() - timedelta(days=days)).isoformat()
     with connect() as conn:
-        rows = published_recently(conn, days=days)
+        if blog_id:
+            rows = conn.execute(
+                "SELECT cluster_simhash FROM published WHERE published_at >= ? AND blog_id = ?",
+                (since, blog_id),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT cluster_simhash FROM published WHERE published_at >= ?",
+                (since,),
+            ).fetchall()
     for r in rows:
         try:
             if hamming(int(r["cluster_simhash"]), simhash) <= max_hamming:
@@ -136,19 +162,24 @@ def pick_topics(
     n: int = 5,
     *,
     selector_profile: str = "lifestyle",
+    blog_id: str | None = None,
 ) -> list[TopicCluster]:
-    """점수 상위 + 중복 가드 + in-cycle 시각적 분리로 N개 후보를 고른다."""
+    """점수 상위 + 중복 가드 + in-cycle 시각적 분리로 N개 후보를 고른다.
+
+    blog_id 가 주어지면 카테고리 분산·중복 가드를 그 블로그 발행 이력으로만 한정.
+    """
     if not clusters:
         return []
-    cat_counts = _category_24h_count()
+    cat_counts = _category_24h_count(blog_id=blog_id)
     settings = get_settings()
 
     scored: list[tuple[float, TopicCluster]] = []
     for c in clusters:
-        if is_recent_duplicate(c.simhash, days=settings.duplicate_window_days):
+        if is_recent_duplicate(c.simhash, days=settings.duplicate_window_days, blog_id=blog_id):
             log.info("selector.dropped_duplicate",
                      title=c.event_title, simhash=c.simhash,
-                     window_days=settings.duplicate_window_days)
+                     window_days=settings.duplicate_window_days,
+                     blog=blog_id)
             continue
         scored.append((score(c, cat_counts, selector_profile=selector_profile), c))
     if not scored:

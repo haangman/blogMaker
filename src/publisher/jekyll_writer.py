@@ -54,18 +54,25 @@ def build_post_filename(slug: str, date_str: str | None = None) -> str:
     return f"{date_str or today_slug_date()}-{slug}.md"
 
 
-def build_frontmatter(draft: ArticleDraft, slug: str) -> dict:
+def build_frontmatter(
+    draft: ArticleDraft,
+    slug: str,
+    *,
+    categories_file: str = "categories.yaml",
+) -> dict:
     meta: dict = {
         "layout": "post",
         "title": draft.title,
         "date": iso_now(),
         "category": draft.category,
-        "category_ko": _category_label_ko(draft.category),
+        "category_ko": _category_label_ko(draft.category, categories_file),
         "tags": draft.tags,
         "summary": draft.summary,
         "slug": slug,
-        "sources": [{"url": s.url, "title": s.title} for s in draft.sources],
     }
+    # 빈 sources 는 frontmatter 에 노출하지 않음 (backlog 글 등)
+    if draft.sources:
+        meta["sources"] = [{"url": s.url, "title": s.title} for s in draft.sources]
     if draft.updates_url:
         meta["updates"] = draft.updates_url
     return meta
@@ -103,6 +110,7 @@ def render_post(
     *,
     header_relpath: str | None = None,
     body_marker_paths: dict[str, tuple[ImageRef, str]] | None = None,
+    categories_file: str = "categories.yaml",
 ) -> str:
     """글 1편의 최종 마크다운 (frontmatter + 본문) 반환.
 
@@ -138,4 +146,4 @@ def render_post(
             parts.append(f"- [{label}]({s.url})")
 
     full = "\n".join(parts)
-    return build_markdown(build_frontmatter(draft, slug), full)
+    return build_markdown(build_frontmatter(draft, slug, categories_file=categories_file), full)

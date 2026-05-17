@@ -76,6 +76,7 @@ def write_article(
                     gate_score=None,
                     gate_failures=[f"llm_error: {e}"],
                     outcome="llm_error",
+                    blog_id=blog.id if blog else None,
                 )
             continue
 
@@ -92,6 +93,7 @@ def write_article(
                 gate_score=gate.score,
                 gate_failures=gate.failures,
                 outcome=gate.outcome,
+                blog_id=blog.id if blog else None,
             )
 
         log.info("writer.attempt", attempt=attempt,
