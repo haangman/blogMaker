@@ -53,7 +53,7 @@ $Settings = New-ScheduledTaskSettingsSet `
     -DontStopIfGoingOnBatteries `
     -StartWhenAvailable `
     -WakeToRun `
-    -ExecutionTimeLimit (New-TimeSpan -Minutes 60) `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 90) `
     -MultipleInstances IgnoreNew
 
 # 이미 등록돼 있으면 갱신

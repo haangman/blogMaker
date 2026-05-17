@@ -21,9 +21,11 @@ from __future__ import annotations
 import json
 import sys
 
+from src.backlog import mark_published, pick_backlog_topics
+from src.backlog.loader import BacklogTopic
 from src.blogs import BlogProfile, enabled_blogs
-from src.cluster.merge import cluster_only, enrich_with_llm
-from src.cluster.simhash import hamming
+from src.cluster.merge import TopicCluster, cluster_only, enrich_with_llm
+from src.cluster.simhash import hamming, simhash64, to_signed64
 from src.collectors.registry import load_active_collectors
 from src.config_loader import DATA_DIR, get_settings
 from src.images import attach_images
@@ -190,10 +192,96 @@ def run_for_blog(blog: BlogProfile) -> int:
                           title=getattr(candidate, "event_title", "?"))
             continue
 
-    # TODO V4-8: backlog 보충 — 트렌드 published_count < articles_per_cycle 면 backlog 에서 채움
+    # V4-8: backlog 보충 — 트렌드만으로 부족하면 backlog 에서 채움
+    if blog.backlog_file:
+        remaining = blog.articles_per_cycle - published_count
+        # backlog_ratio 가 설정돼 있으면 그 비율도 추가 (트렌드와 함께 발행)
+        target_backlog_n = max(remaining, int(blog.articles_per_cycle * blog.backlog_ratio))
+        target_backlog_n = min(target_backlog_n, blog.articles_per_cycle - published_count)
+        if target_backlog_n > 0:
+            backlog_topics = pick_backlog_topics(
+                blog.id, n=target_backlog_n,
+                cycle_simhashes=in_cycle_simhashes,
+            )
+            log.info("blog.backlog_picked", blog=blog.id, n=len(backlog_topics))
+            for topic in backlog_topics:
+                try:
+                    ok = _publish_backlog_one(
+                        topic, log=log, blog=blog,
+                        in_cycle_simhashes=in_cycle_simhashes, settings=settings,
+                    )
+                    if ok:
+                        published_count += 1
+                except CycleQuotaExceeded:
+                    log.error("cycle.quota_exceeded_midway_backlog",
+                              published=published_count, blog=blog.id)
+                    raise
+                except Exception:
+                    log.exception("backlog.article_unhandled",
+                                  topic_id=topic.id, blog=blog.id)
+                    continue
+
     log.info("blog.end", blog=blog.id, published=published_count,
              attempted=len(candidates), llm_calls=get_cycle_call_count())
     return published_count
+
+
+def _publish_backlog_one(
+    topic: BacklogTopic,
+    *,
+    log,
+    blog: BlogProfile,
+    in_cycle_simhashes: list[int],
+    settings,
+) -> bool:
+    """백로그 토픽 1개를 글로 작성 후 발행."""
+    # 가짜 TopicCluster — items=[], category/title/summary 는 backlog 항목에서
+    fake = TopicCluster(
+        items=[],
+        event_title=topic.topic,
+        event_summary=(
+            f"AI 카테고리 '{topic.category}' 의 {topic.depth} 수준 핵심 토픽 정리. "
+            f"독자가 처음 접해도 따라올 수 있게 비유·예시·필요 시 다이어그램·코드 스니펫 포함."
+        ),
+        category=topic.category,
+        simhash=topic.topic_simhash or to_signed64(simhash64(topic.topic)),
+        embedding=None,
+        enriched=True,
+    )
+
+    if any(hamming(fake.simhash, h) <= IN_CYCLE_SIMHASH_GAP for h in in_cycle_simhashes):
+        log.info("backlog.skip_in_cycle_dup", topic_id=topic.id, topic=topic.topic)
+        return False
+
+    log.info("backlog.writing", topic_id=topic.id, topic=topic.topic,
+             category=topic.category, depth=topic.depth, blog=blog.id)
+
+    article, gate = write_article(fake, followup=None, blog=blog)
+    if gate.outcome != "pass":
+        log.warning("backlog.gate_failed", topic=topic.topic,
+                    failures=gate.failures, score=gate.score, blog=blog.id)
+        return False
+
+    attach_images(article, fake)
+
+    info = publish(article, blog=blog)
+    log.info("backlog.published", path=str(info.post_path), pushed=info.pushed,
+             topic_id=topic.id, blog=blog.id)
+
+    with connect() as conn:
+        record_published(
+            conn,
+            cluster_simhash=fake.simhash,
+            title=article.title,
+            category=article.category,
+            post_path=str(info.post_path),
+            source_urls=[],
+            cluster_embedding=None,
+            blog_id=blog.id,
+        )
+    mark_published(topic.id, str(info.post_path))
+    in_cycle_simhashes.append(fake.simhash)
+    return True
 
 
 def run_cycle(blog_ids: list[str] | None = None) -> int:

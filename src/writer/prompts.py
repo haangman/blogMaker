@@ -167,15 +167,28 @@ def build_user_prompt(
         excerpt = (it.body or "")[:280].strip()
         excerpts.append(f"- ({it.source_id}) {it.title} — {excerpt}")
 
-    parts = [
-        f"카테고리: {cluster.category}",
-        f"사건 제목(임시): {cluster.event_title}",
-        f"사건 요약: {cluster.event_summary}",
-        "",
-        "원문 발췌:",
-        *excerpts,
-        "",
-    ]
+    is_backlog = not cluster.items
+    if is_backlog:
+        parts = [
+            f"카테고리: {cluster.category}",
+            f"이번 글의 주제: **{cluster.event_title}**",
+            f"메모: {cluster.event_summary}",
+            "",
+            "이건 외부 사건 정리가 아니라 **AI 기술의 핵심 주제를 처음 정리하는 글** 이다. "
+            "독자가 이 주제를 처음 접해도 끝까지 따라올 수 있게 친절하게 — 그러나 "
+            "매뉴얼체는 금지. 본인이 직접 만져본 한에서, 정확하지 않은 부분은 추측이라고 명시하면서.",
+            "",
+        ]
+    else:
+        parts = [
+            f"카테고리: {cluster.category}",
+            f"사건 제목(임시): {cluster.event_title}",
+            f"사건 요약: {cluster.event_summary}",
+            "",
+            "원문 발췌:",
+            *excerpts,
+            "",
+        ]
 
     if followup:
         parts.append(

@@ -166,6 +166,41 @@ def run(
     raise typer.Exit(code=rc)
 
 
+@app.command("seed-backlog")
+def seed_backlog_cmd(
+    blog_id: str = typer.Option("ai", "--blog", "-b", help="대상 블로그 (기본 ai)"),
+    per_category: int = typer.Option(30, help="카테고리당 토픽 수"),
+) -> None:
+    """LLM 으로 카테고리당 N개 토픽을 시드해 SQLite backlog 테이블에 적재."""
+    setup_logging()
+    log = get_logger("cli.seed_backlog")
+
+    from src.backlog import seed_backlog
+    from src.backlog.loader import count_status, export_to_yaml
+    from src.blogs import for_id
+    from src.state.db import migrate
+
+    migrate()
+    blog = for_id(blog_id)
+    if blog.backlog_file is None:
+        typer.secho(f"[FAIL] 블로그 '{blog_id}' 는 backlog_file 이 설정되지 않음", fg="red")
+        raise typer.Exit(code=1)
+
+    typer.echo(f"[..] LLM 으로 카테고리당 {per_category} 개 시드 시작 (블로그={blog_id})")
+    inserted = seed_backlog(
+        blog_id=blog_id,
+        categories_file=blog.categories_file,
+        per_category=per_category,
+    )
+    status = count_status(blog_id)
+    typer.secho(f"[OK]  새로 추가된 토픽: {inserted}", fg="green")
+    typer.echo(f"      현재 상태: {status}")
+
+    # yaml export (사람 검수용)
+    export_to_yaml(blog_id, blog.backlog_file)
+    typer.secho(f"[OK]  yaml export: config/{blog.backlog_file}", fg="green")
+
+
 @app.command("analyze-persona")
 def analyze_persona(
     urls: list[str] = typer.Option(
