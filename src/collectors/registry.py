@@ -7,6 +7,7 @@ import importlib
 from src.collectors.base import Collector
 from src.config_loader import load_sources
 from src.logging_setup import get_logger
+from src.state.db import connect
 
 log = get_logger("collector.registry")
 
@@ -17,13 +18,29 @@ _MODULE_CLASS = {
     "google_news_rss": "GoogleNewsCollector",
     "bbc": "BBCCollector",
     "lobsters": "LobstersCollector",
+    "korean_news": "KoreanNewsCollector",
 }
+
+
+def _disabled_source_ids() -> set[str]:
+    try:
+        with connect() as conn:
+            rows = conn.execute(
+                "SELECT source_id FROM source_health WHERE disabled = 1"
+            ).fetchall()
+        return {r["source_id"] for r in rows}
+    except Exception:
+        return set()
 
 
 def load_active_collectors() -> list[Collector]:
     out: list[Collector] = []
+    disabled = _disabled_source_ids()
     for src in load_sources().get("sources", []):
         if not src.get("enabled"):
+            continue
+        if src["id"] in disabled:
+            log.info("collector.disabled_by_health", source=src["id"])
             continue
         module = src["module"]
         cls_name = _MODULE_CLASS.get(module)

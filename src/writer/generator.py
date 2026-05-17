@@ -8,6 +8,7 @@ from src.llm import ClaudeCLIError, ask
 from src.logging_setup import get_logger
 from src.publisher.models import ArticleDraft, SourceRef
 from src.quality.gate import GateResult, evaluate
+from src.selector.followup import FollowupContext
 from src.state.db import connect
 from src.state.repo import record_attempt
 from src.utils.timeutil import iso_now
@@ -25,7 +26,10 @@ def _title_for_article(cluster: TopicCluster, body: str) -> str:
     return cluster.event_title
 
 
-def write_article(cluster: TopicCluster) -> tuple[ArticleDraft, GateResult]:
+def write_article(
+    cluster: TopicCluster,
+    followup: FollowupContext | None = None,
+) -> tuple[ArticleDraft, GateResult]:
     rules = load_quality_rules()
     max_rewrites = int((rules.get("rewrite") or {}).get("max_attempts", 2))
 
@@ -35,7 +39,7 @@ def write_article(cluster: TopicCluster) -> tuple[ArticleDraft, GateResult]:
 
     for attempt in range(1, max_rewrites + 2):
         system = build_system_prompt(rewrite_feedback=feedback if attempt > 1 else None)
-        user = build_user_prompt(cluster)
+        user = build_user_prompt(cluster, followup=followup)
         try:
             resp = ask(user, system_prompt=system, model="opus",
                        purpose=f"write_attempt_{attempt}")
@@ -96,6 +100,8 @@ def write_article(cluster: TopicCluster) -> tuple[ArticleDraft, GateResult]:
         sources=sources,
         cluster_simhash=cluster.simhash,
     )
+    if followup:
+        draft.tags = list(set(draft.tags + ["follow-up"]))
     return draft, last_gate
 
 

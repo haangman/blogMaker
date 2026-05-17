@@ -11,6 +11,7 @@ from pathlib import Path
 
 from src.cluster.merge import TopicCluster
 from src.config_loader import CONFIG_DIR, load_quality_rules
+from src.selector.followup import FollowupContext
 
 
 def _read_text(path: Path) -> str:
@@ -62,7 +63,10 @@ def build_system_prompt(*, rewrite_feedback: list[str] | None = None) -> str:
     return "\n\n".join(sections)
 
 
-def build_user_prompt(cluster: TopicCluster) -> str:
+def build_user_prompt(
+    cluster: TopicCluster,
+    followup: FollowupContext | None = None,
+) -> str:
     # 길이대 변주 — 매번 다른 분포
     lengths = [(450, 650), (700, 1000), (1000, 1400), (300, 450)]
     weights = [0.25, 0.4, 0.25, 0.10]
@@ -73,12 +77,29 @@ def build_user_prompt(cluster: TopicCluster) -> str:
         excerpt = (it.body or "")[:280].strip()
         excerpts.append(f"- ({it.source_id}) {it.title} — {excerpt}")
 
-    return (
-        f"카테고리: {cluster.category}\n"
-        f"사건 제목(임시): {cluster.event_title}\n"
-        f"사건 요약: {cluster.event_summary}\n\n"
-        f"원문 발췌:\n" + "\n".join(excerpts) + "\n\n"
+    parts = [
+        f"카테고리: {cluster.category}",
+        f"사건 제목(임시): {cluster.event_title}",
+        f"사건 요약: {cluster.event_summary}",
+        "",
+        "원문 발췌:",
+        *excerpts,
+        "",
+    ]
+
+    if followup:
+        parts.append(
+            "[FOLLOW-UP] 같은 흐름을 이전에 한 번 다뤘다. "
+            f"이전 글 제목: \"{followup.previous_title}\". "
+            "이번 글은 그 글의 단순 반복이 아니라 **그 사이의 변화·새로 드러난 사실·달라진 분위기** 에 초점. "
+            "이전 글의 결론을 그대로 끌어다 쓰지 마. "
+            "본문 어딘가에서 자연스럽게 이전 글을 한 줄 정도 참조해도 좋다."
+        )
+        parts.append("")
+
+    parts.append(
         f"위 사건을 본인의 시선으로 쓴 블로그 글로 풀어내라. "
         f"한국어 마크다운 본문, 대략 {lo}~{hi}자 사이. "
         f"제목 라인(`#`)은 절대 넣지 마. 본문만."
     )
+    return "\n".join(parts)

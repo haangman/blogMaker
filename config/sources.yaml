@@ -6,48 +6,63 @@ sources:
   - id: hackernews
     enabled: true
     module: hackernews
-    description: "HackerNews top stories — 기술/문화 트렌드의 1순위"
+    description: "HackerNews top stories — 기술/문화 트렌드"
     params:
       top_n: 50
 
   - id: reddit_popular
-    enabled: false  # Step 8 활성화 예정
+    enabled: true
     module: reddit
     description: "/r/popular top — 전세계 사회·문화 시그널"
     params:
       subreddit: popular
-      limit: 50
+      limit: 40
+      t: day
 
   - id: reddit_worldnews
-    enabled: false
+    enabled: true
     module: reddit
     description: "/r/worldnews top — 국제 뉴스"
     params:
       subreddit: worldnews
-      limit: 50
+      limit: 40
+      t: day
 
   - id: google_news_ko
-    enabled: false
+    enabled: true
     module: google_news_rss
     description: "Google News RSS 한국어 — 한국 트렌드 메인"
     params:
       hl: ko
       gl: KR
+      limit: 40
 
   - id: google_news_en
-    enabled: false
+    enabled: true
     module: google_news_rss
     description: "Google News RSS 영어 — 글로벌 트렌드"
     params:
       hl: en
       gl: US
+      limit: 30
 
   - id: bbc
-    enabled: false
+    enabled: true
     module: bbc
-    description: "BBC News RSS — 국제 뉴스 안정성"
+    description: "BBC News RSS — 국제 뉴스"
+    params:
+      limit: 30
+
+  - id: korean_news
+    enabled: true
+    module: korean_news
+    description: "한국 매체 RSS 통합 (연합뉴스, ETnews, 한겨레)"
+    params:
+      limit: 20
 
   - id: lobsters
-    enabled: false
+    enabled: true
     module: lobsters
     description: "Lobste.rs — HN 보완, 기술 깊이"
+    params:
+      limit: 30

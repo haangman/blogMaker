@@ -31,7 +31,7 @@ def build_post_filename(slug: str, date_str: str | None = None) -> str:
 
 
 def build_frontmatter(draft: ArticleDraft, slug: str) -> dict:
-    return {
+    meta: dict = {
         "layout": "post",
         "title": draft.title,
         "date": iso_now(),
@@ -42,6 +42,9 @@ def build_frontmatter(draft: ArticleDraft, slug: str) -> dict:
         "slug": slug,
         "sources": [{"url": s.url, "title": s.title} for s in draft.sources],
     }
+    if draft.updates_url:
+        meta["updates"] = draft.updates_url
+    return meta
 
 
 def render_post(draft: ArticleDraft, slug: str, image_relpath: str | None) -> str:

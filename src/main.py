@@ -18,9 +18,10 @@ from src.logging_setup import get_logger, setup_logging
 from src.normalize import normalize_batch
 from src.publisher import publish
 from src.quality.gate import GateResult, evaluate
+from src.selector.followup import encode_embedding, find_followup
 from src.selector.score import pick_topic
 from src.state.db import connect, migrate
-from src.state.repo import record_published
+from src.state.repo import record_published, record_source_failure, record_source_success
 from src.utils.lockfile import LockBusy, cycle_lock
 from src.utils.timeutil import iso_now, now_seoul
 from src.writer.generator import write_article
@@ -62,9 +63,17 @@ def run_cycle() -> int:
             raws = []
             for c in collectors:
                 try:
-                    raws.extend(c.fetch())
+                    fetched = c.fetch()
+                    raws.extend(fetched)
+                    with connect() as conn:
+                        record_source_success(conn, c.source_id)
                 except Exception as e:
                     log.warning("collector.failed", source=c.source_id, error=str(e))
+                    try:
+                        with connect() as conn:
+                            record_source_failure(conn, c.source_id, str(e)[:500])
+                    except Exception:
+                        log.exception("collector.health_record_failed")
             log.info("cycle.collected", total=len(raws))
             if not raws:
                 log.info("cycle.empty_collect")
@@ -89,12 +98,20 @@ def run_cycle() -> int:
                 return 0
             log.info("cycle.selected", title=selected.event_title, category=selected.category)
 
+            # follow-up 모드 — 8~30일 내 비슷한 사건 있으면 컨텍스트 첨부
+            followup = find_followup(selected)
+            if followup:
+                log.info("cycle.followup", prev=followup.previous_title, cosine=followup.cosine)
+
             # phase 6+8: write + gate + rewrite loop
-            article, gate = write_article(selected)
+            article, gate = write_article(selected, followup=followup)
             if gate.outcome != "pass":
                 log.warning("cycle.gate_failed_terminal",
                             failures=gate.failures, score=gate.score)
                 return 0
+
+            if followup and followup.previous_url:
+                article.updates_url = followup.previous_url
 
             # phase 7: image
             attach_image(article, selected)
@@ -111,6 +128,8 @@ def run_cycle() -> int:
                     category=article.category,
                     post_path=str(info.post_path),
                     source_urls=[s.url for s in article.sources],
+                    cluster_embedding=encode_embedding(selected.embedding)
+                        if selected.embedding is not None else None,
                 )
 
             log.info("cycle.end", status="ok")

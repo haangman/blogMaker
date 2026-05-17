@@ -161,8 +161,18 @@ J-Blog/
 - [x] **Step 5: cluster + categorize + selector** — sentence-transformers + HDBSCAN(폴백 코사인+union-find) + simhash 매칭 + 카테고리 다양성 페널티
 - [x] **Step 6: persona analyzer CLI** — `analyze-persona --url ...` 으로 RSS/sitemap 수집 → 톤 분석 → `persona.generated.md` 자동 생성
 - [x] **Step 7: 이미지 + 게이트 확장** — Unsplash → Pexels 폴백, 통계/페르소나 체크 + must_contain_any 검사
-- [ ] Step 8: 나머지 collectors + follow-up 모드
-- [ ] Step 9: Windows Task Scheduler 설정
+- [x] **Step 8: 나머지 collectors + follow-up 모드** — Reddit/Google News(ko·en)/BBC/KoreanNews(연합·ETNews·한겨레)/Lobsters 활성화, source_health로 3연속 실패 시 자동 비활성, 8~30일 임베딩 코사인≥0.88 매치 시 follow-up 글로 변환(이전 글 컨텍스트 첨부 + frontmatter `updates:` + tag)
+- [x] **Step 9: Windows Task Scheduler 설정** — `scripts/run_cycle.ps1` 래퍼, `scripts/setup_task.ps1` 자동 등록 스크립트, `scripts/task_blogmaker.xml` 참고 템플릿
+
+### Task Scheduler 등록 (사용자가 실행)
+```powershell
+cd C:\Users\김은희\Downloads\blogMaker
+pwsh -ExecutionPolicy Bypass -File .\scripts\setup_task.ps1            # 매일 09:00 등록
+pwsh -ExecutionPolicy Bypass -File .\scripts\setup_task.ps1 -At "21:00" # 시각 변경
+Start-ScheduledTask -TaskName 'Cycle' -TaskPath '\BlogMaker\'           # 수동 1회 트리거
+pwsh -ExecutionPolicy Bypass -File .\scripts\setup_task.ps1 -Remove     # 작업 제거
+```
+사용자 로그온 시 실행 — Claude Code CLI 세션이 사용자 컨텍스트에 묶이므로 다른 옵션 불가.
 
 ### 의존성 설치 (사용자가 실행)
 ```powershell

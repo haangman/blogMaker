@@ -24,6 +24,7 @@ class ArticleDraft:
     image_alt: str = ""
     image_credit: str = ""                 # "Photo by X on Unsplash" 같은 출처
     cluster_simhash: int | None = None     # Step 5에서 채워진다. None 이면 글 해시로 폴백.
+    updates_url: str | None = None         # follow-up 글일 때 이전 글의 permalink (예: /2026/05/10/slug/)
 
 
 @dataclass
