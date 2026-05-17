@@ -67,11 +67,32 @@ def build_system_prompt(*, rewrite_feedback: list[str] | None = None) -> str:
         "글 흐름이 한 번 끊기는 자리(섹션 전환점)에서 사진이 들어가면 독자 이해에 도움 되겠다 싶으면, "
         "그 자리에 다음 형식 마커를 **한 줄로 단독** 삽입해라:\n\n"
         '    [IMAGE: "english search query"]\n\n'
-        "- 마커 수는 본문 길이에 비례: 800자 이하면 1개, 1500자 내외 2개, 2000자 이상 3개. 4개 이상 금지.\n"
-        "- 같은 글의 마커들은 서로 **다른 검색어** 를 써라 (시각 단조 회피).\n"
-        "- 검색어는 영문 2~4 단어, 구체적인 시각 대상으로. 예: \"satellite dish night sky\", \"korean office worker\", \"old neon sign tokyo\".\n"
-        "- 마커가 본문 첫 줄/마지막 줄에 오면 어색하다 — 본문 **중간** 에만 놓는다.\n"
-        "- 마커 앞뒤로 빈 줄을 둔다 (문단처럼 분리되게)."
+        "**마커 검색어 규칙 — 매우 중요. 안 지키면 엉뚱한 사진이 박힌다.**\n"
+        "- 영문 **3~5 단어**.\n"
+        "- 마커 자리에서 **방금 본문이 묘사한 구체적 시각 장면** 을 그대로 가리켜라. "
+        "마커 직전 1~2 문단에 등장한 사물·인물·동물·풍경·소품·동작 중 "
+        "사진으로 찍을 수 있는 가장 또렷한 한 장면.\n"
+        "- 형태: **명사 중심 + 형용사 + 장소/맥락**. 추상 개념·감정·범주 단독 금지.\n"
+        "- 같은 글의 마커들은 시각적으로 서로 **다른 장면**.\n"
+        "- 마커 수는 본문 길이에 비례: 800자 이하 1개, 1500자 내외 2개, 2000자 이상 3개. 4개 이상 금지.\n"
+        "- 마커가 본문 첫 줄/마지막 줄에 오면 어색 — 본문 **중간** 에만.\n"
+        "- 마커 앞뒤로 빈 줄.\n"
+        "\n"
+        "좋은 예 (글 흐름과 매칭):\n"
+        "- 본문이 '실키 안테이터 영상' 을 막 말한 자리:\n"
+        '    [IMAGE: "silky anteater small mammal closeup"]\n'
+        "- 본문이 '종이 오려 도시 풍경에 합성한 사진' 을 말한 자리:\n"
+        '    [IMAGE: "paper cutout silhouette in front of building"]\n'
+        "- 본문이 '직접 조립한 PC 부품 자랑' 을 말한 자리:\n"
+        '    [IMAGE: "open pc case rgb fans desk"]\n'
+        "- 본문이 '비 오는 서울 골목' 을 말한 자리:\n"
+        '    [IMAGE: "rainy seoul alley night neon"]\n'
+        "\n"
+        "나쁜 예 (장면이 모호하거나 스톡에 거의 없음):\n"
+        '- [IMAGE: "rare animals surreal art"]   ← 추상 형용사 위주\n'
+        '- [IMAGE: "reddit homepage screen"]      ← SNS 캡처는 스톡 사진에 없음\n'
+        '- [IMAGE: "innovation technology"]       ← 개념 단어\n'
+        '- [IMAGE: "atmosphere mood"]             ← 감정·분위기 단독'
     )
 
     if persona_generated:

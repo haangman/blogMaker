@@ -18,13 +18,41 @@ log = get_logger("images")
 
 
 _KEYWORD_SYSTEM = (
-    "사건 요약을 받아서 이미지 스톡 사이트(Unsplash) 검색용 영문 키워드 2~3 단어를 "
-    "한 줄로만 답한다. 다른 설명 금지. 예: 'remote work laptop' 같은 식."
+    "한국어 블로그 글의 헤더에 쓸 영어 **스톡 사진 검색어**를 만든다.\n"
+    "글 본문이 묘사한 한 가지 **구체적 시각 장면**을 영어로 옮긴 검색어 한 줄.\n"
+    "\n"
+    "규칙:\n"
+    "- 영문 **3~5 단어**.\n"
+    "- 명사를 중심으로 (형용사·장소·맥락 조합 OK). 추상 개념·감정·범주 단독 금지.\n"
+    "- 본문이 묘사한 사물·인물·동물·풍경·소품·동작 중 **가장 시각화 가능한 것 1가지**.\n"
+    "- 사진에 흔히 있을 법한 장면이어야 한다 (검색 결과 의외이지 않게).\n"
+    "- 답은 검색어 한 줄. 다른 설명·따옴표·prefix 금지.\n"
+    "\n"
+    "좋은 예 (장면이 또렷이 떠오름):\n"
+    "- silky anteater small mammal closeup\n"
+    "- paper cutout silhouette in front of building\n"
+    "- open pc case rgb fans desk\n"
+    "- korean night street rainy neon\n"
+    "- empty cafe table morning light\n"
+    "\n"
+    "나쁜 예 (장면이 모호하거나 스톡에 거의 없음):\n"
+    "- 'rare animals surreal art' (추상)\n"
+    "- 'innovation technology' (개념)\n"
+    "- 'reddit homepage screen' (SNS 캡처 — 스톡엔 거의 없음)\n"
+    "- 'atmosphere mood' (감정 단독)"
 )
 
 
-def _header_keywords(cluster: TopicCluster) -> str:
-    user = f"제목: {cluster.event_title}\n요약: {cluster.event_summary}"
+def _header_keywords(cluster: TopicCluster, body_excerpt: str = "") -> str:
+    parts = [
+        f"제목: {cluster.event_title}",
+        f"요약: {cluster.event_summary}",
+    ]
+    if body_excerpt:
+        parts.append("")
+        parts.append("본문 도입부 (이걸 보고 어떤 장면을 그릴지 결정):")
+        parts.append(body_excerpt.strip())
+    user = "\n".join(parts)
     try:
         resp = ask(
             user,
@@ -33,7 +61,7 @@ def _header_keywords(cluster: TopicCluster) -> str:
             purpose="image_keywords",
             timeout_s=60,
         )
-        kw = resp.text.strip().splitlines()[0].strip()
+        kw = resp.text.strip().splitlines()[0].strip().strip('"\'')
         return kw or cluster.category
     except ClaudeCLIError:
         return cluster.category
@@ -64,8 +92,8 @@ def attach_images(article: ArticleDraft, cluster: TopicCluster) -> None:
 
     images: list[ImageRef] = []
 
-    # 헤더 이미지 (1장)
-    header_kw = _header_keywords(cluster)
+    # 헤더 이미지 (1장) — 글 도입부를 보고 키워드 결정 (장면 매칭 정확도 ↑)
+    header_kw = _header_keywords(cluster, body_excerpt=article.body_markdown[:600])
     log.info("images.header_query", q=header_kw)
     header = _try_fetch_one(header_kw)
     if header:
