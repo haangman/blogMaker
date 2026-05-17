@@ -8,12 +8,27 @@
 1. **자연스러움** — AI 티가 나지 않게, 한 사람의 목소리/문체로 일관되게.
 2. **자동화** — 글 생성·수정 시마다 자동으로 commit & push 되어 GitHub Pages가 즉시 업데이트.
 
+## 두 리포 구조 (중요)
+
+이 프로젝트는 **두 개의 GitHub 리포지토리**로 나뉜다.
+
+| 리포 | 역할 | 로컬 경로 |
+|---|---|---|
+| **blogMaker** (이 리포) | 블로그를 자동 생성하는 **코드**가 사는 곳. 트렌드 수집기·글 생성기·발행기 모두 여기 있다. | `C:\Users\김은희\Downloads\blogMaker` |
+| **J-Blog** | 실제 **블로그(Jekyll 사이트)** 가 사는 곳. GitHub Pages가 이 리포를 빌드해서 https://haangman.github.io/J-Blog/ 로 발행한다. | `C:\Users\김은희\Downloads\J-Blog` (blogMaker의 sibling) |
+
+두 리포는 **로컬에서 sibling 디렉토리**(같은 부모 폴더)에 둔다. 발행기(publisher)는 상대경로 `../J-Blog/_posts/`에 글을 쓰고, 그 리포에서 `git add/commit/push`를 실행한다.
+
+> 글을 새로 만들거나 수정한 변화는 **J-Blog** 에 commit/push.
+> 생성기·수집기 등 코드 변화는 **blogMaker** 에 commit/push.
+> 둘은 별개의 git 히스토리를 가진다.
+
 ## 핵심 요구사항
 
 ### 1. 트렌드 수집
 - 최신 트렌드 소스: Google Trends, X(Twitter) 인기 키워드, Reddit r/popular, Naver 데이터랩, HackerNews 등
 - 단순 키워드뿐 아니라 **왜 뜨고 있는지(맥락)** 까지 함께 수집해야 글의 깊이가 생긴다.
-- 수집 결과는 `data/trends/YYYY-MM-DD.json` 같은 구조로 저장해 재현 가능성 확보.
+- 수집 결과는 `data/trends/YYYY-MM-DD.json` 같은 구조로 저장해 재현 가능성 확보 (blogMaker 안에 저장).
 
 ### 2. 사람처럼 쓰기 (가장 중요)
 AI 글의 흔한 티를 의도적으로 피한다:
@@ -26,19 +41,23 @@ AI 글의 흔한 티를 의도적으로 피한다:
 - 같은 표현 반복 회피 — 첫 문단과 마지막 문단의 단어 겹침을 의도적으로 줄인다
 - **페르소나 일관성**: `config/persona.md`에 정의된 1인칭 화자(나이대, 직업, 말투, 자주 쓰는 표현, 싫어하는 표현)에 맞춰서 작성
 
-### 3. GitHub Pages 블로그
+### 3. Jekyll 블로그 (J-Blog 리포)
 - 정적 사이트 생성기: **Jekyll** (GitHub Pages 네이티브 지원 → 별도 빌드 액션 없이 자동 배포)
 - 글 파일은 마크다운 + Front Matter (title, date, tags, summary)
-- `_posts/YYYY-MM-DD-slug.md` 형식
-- 이미지/썸네일은 `assets/img/` 하위로
-- 테마는 `jekyll-remote-theme` 또는 minima 기반으로 시작 (확정 시 갱신)
+- 글 경로: `J-Blog/_posts/YYYY-MM-DD-slug.md`
+- 이미지/썸네일: `J-Blog/assets/img/`
+- 테마: minima 기본, 이후 변경 가능
+- baseurl이 `/J-Blog`로 설정돼 있어 발행 URL은 `https://haangman.github.io/J-Blog/`
 
 ### 4. 자동 commit & push
 - **파일이 추가·수정될 때마다 자동으로 stage → commit → push**
-- 커밋 메시지는 변경 내용을 요약 (예: `post: 새 글 "~~~" 발행`, `post: ~~~ 본문 수정`)
+- 변화의 종류에 따라 **어느 리포에 푸시할지 자동 분기**:
+  - `_posts/`, `assets/img/`, `_config.yml` 변화 → **J-Blog**
+  - `src/`, `config/`, `CLAUDE.md`, `data/` 변화 → **blogMaker**
+- 커밋 메시지는 변경 내용을 요약 (예: `post: 새 글 "~~~" 발행`, `feat: 트렌드 수집기 Reddit 소스 추가`)
 - 푸시는 main 브랜치로, GitHub Pages가 자동 빌드
 - 실패(네트워크 오류, 충돌 등) 시 재시도 + 로그 남기기
-- 자동화 수단: 파일 watcher 스크립트 또는 발행 함수 내부에서 `git add/commit/push`를 직접 호출
+- 자동화 수단: 발행 함수 내부에서 해당 리포의 working directory를 향해 `git -C <repo> add/commit/push`를 호출
 
 ## 작업 시 지침 (Claude용)
 
@@ -46,7 +65,8 @@ AI 글의 흔한 티를 의도적으로 피한다:
 - 트렌드 수집기, 글 생성기, 발행기를 **모듈 단위**로 분리 (책임 분리)
 - 한 번에 한 글만 생성하는 단순 흐름을 먼저 만들고, 그 다음에 스케줄링/배치 추가
 - 외부 API 호출은 항상 키를 `.env`에서 읽고 코드에 하드코딩하지 않는다. `.gitignore`에 반드시 `.env` 포함
-- 글 발행 후 반드시 자동 commit & push가 트리거되는지 확인
+- 발행기는 J-Blog의 절대/상대 경로를 환경변수(`JBLOG_PATH`)로 받아 처리한다. 기본값은 sibling `../J-Blog`
+- 글 발행 후 반드시 J-Blog 쪽 자동 commit & push가 트리거되는지 확인
 
 ### 글 품질 검수
 글을 한 편 생성했으면 **발행 전에** 다음을 셀프체크:
@@ -56,50 +76,57 @@ AI 글의 흔한 티를 의도적으로 피한다:
 - 같은 단어/표현이 3회 이상 반복되는가?
 
 ### 커밋 메시지 컨벤션
-- `post: ...` — 새 글 추가 또는 글 수정
-- `feat: ...` — 생성기/수집기 등 기능 추가
+- `post: ...` — 새 글 추가 또는 글 수정 (J-Blog)
+- `feat: ...` — 생성기/수집기 등 기능 추가 (blogMaker)
 - `fix: ...` — 버그 수정
 - `chore: ...` — 설정/문서/의존성 등 잡일
-- `style: ...` — 사이트 디자인/CSS
+- `style: ...` — 사이트 디자인/CSS (J-Blog)
 
 ### 하지 말 것
 - 사용자 확인 없이 GitHub 리포 삭제, force-push, 브랜치 제거
 - `.env`나 API 키가 들어간 파일을 커밋
 - "AI가 작성한 글입니다" 류의 주석/푸터를 글에 자동 삽입
 - 모든 글을 동일한 템플릿(서론-본론-결론)으로 찍어내기
+- blogMaker에 Jekyll 파일(`_posts/`, `_config.yml`, `Gemfile` 등)을 다시 만들지 말 것 — 그건 J-Blog 쪽
 
-## 디렉토리 구조 (계획)
+## 디렉토리 구조
 
+### blogMaker (이 리포 — 코드)
 ```
 blogMaker/
 ├── CLAUDE.md                 # 이 문서
-├── README.md                 # 사람용 소개
+├── README.md                 # 사람용 소개 (미작성)
 ├── .gitignore
-├── .env.example              # 환경변수 템플릿
+├── .env.example              # 환경변수 템플릿 (미작성)
 ├── config/
 │   └── persona.md            # 블로그 화자 페르소나 정의
-├── src/
+├── src/                      # (미작성)
 │   ├── trends/               # 트렌드 수집 모듈
 │   ├── writer/               # 글 생성 모듈 (자연스러움 로직 포함)
-│   ├── publisher/            # 마크다운 변환 + git 자동화
+│   ├── publisher/            # 마크다운 변환 + git 자동화 (J-Blog로 푸시)
 │   └── main.py (또는 .ts)    # 엔트리포인트
-├── data/
-│   └── trends/               # 일자별 수집 결과
-├── _posts/                   # Jekyll 글 (YYYY-MM-DD-slug.md)
-├── assets/img/
-├── _config.yml               # Jekyll 설정
+└── data/
+    └── trends/               # 일자별 수집 결과
+```
+
+### J-Blog (sibling 리포 — 블로그)
+```
+J-Blog/
+├── _config.yml               # Jekyll 설정 (baseurl: /J-Blog)
 ├── Gemfile                   # github-pages gem
-└── index.md                  # 블로그 홈
+├── index.md                  # 블로그 홈
+├── _posts/                   # 글: YYYY-MM-DD-slug.md
+├── assets/img/               # 이미지
+└── .gitignore
 ```
 
 ## 진행 상태
 
-- [x] git init 및 GitHub 리포 연결
+- [x] blogMaker git init 및 GitHub 리포 연결
 - [x] 정적 사이트 생성기 선택 → **Jekyll**
-- [x] Jekyll 기본 구조 생성 (`_config.yml`, `Gemfile`, `index.md`, `_posts/`)
 - [x] 페르소나 초안 작성 (`config/persona.md`) — 사용자 검토/수정 필요
-- [x] GitHub Pages 활성화 → https://haangman.github.io/blogMaker/
+- [x] 블로그를 별도 리포(**J-Blog**)로 분리하고 Pages 활성화 → https://haangman.github.io/J-Blog/
+- [ ] 발행기(publisher) 구현 — J-Blog 경로로 글 쓰고 git push
 - [ ] 트렌드 수집기 구현
 - [ ] 글 생성기 구현 (자연스러움 가이드 반영)
-- [ ] 자동 commit & push 파이프라인
-- [ ] GitHub Pages 활성화 및 첫 글 발행
+- [ ] 첫 글 발행
