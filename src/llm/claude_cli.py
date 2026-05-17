@@ -267,7 +267,7 @@ def health_check() -> tuple[bool, str]:
     """CLI 가 살아있는지 가벼운 호출로 검증. (ok, message)."""
     try:
         resp = ask("ping", system_prompt="단어 'pong' 한 단어만 응답해라.",
-                   model="haiku", purpose="healthcheck", timeout_s=60)
+                   model="opus", purpose="healthcheck", timeout_s=60)
         ok = "pong" in resp.text.lower()
         return ok, resp.text.strip()
     except Exception as e:

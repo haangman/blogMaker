@@ -112,7 +112,7 @@ def _merge_with_llm(items: list[NormalizedItem]) -> tuple[str, str]:
         bullets.append(line)
     user = "다음 항목들을 통합:\n" + "\n".join(bullets)
     try:
-        resp = ask(user, system_prompt=_MERGE_SYSTEM, model="sonnet", purpose="cluster_merge")
+        resp = ask(user, system_prompt=_MERGE_SYSTEM, model="opus", purpose="cluster_merge")
     except ClaudeCLIError as e:
         log.warning("cluster.merge_llm_failed", error=str(e))
         rep = items[0]

@@ -57,7 +57,7 @@ def _header_keywords(cluster: TopicCluster, body_excerpt: str = "") -> str:
         resp = ask(
             user,
             system_prompt=_KEYWORD_SYSTEM,
-            model="haiku",
+            model="opus",
             purpose="image_keywords",
             timeout_s=60,
         )

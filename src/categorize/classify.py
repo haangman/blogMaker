@@ -32,7 +32,7 @@ def classify_category(title: str, summary: str) -> str:
     valid = {c["id"] for c in load_categories().get("categories", [])}
     user = f"제목: {title}\n요약: {summary}"
     try:
-        resp = ask(user, system_prompt=_SYSTEM_CACHE, model="sonnet", purpose="categorize")
+        resp = ask(user, system_prompt=_SYSTEM_CACHE, model="opus", purpose="categorize")
     except ClaudeCLIError as e:
         log.warning("categorize.failed", error=str(e))
         return "other"
