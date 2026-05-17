@@ -1,0 +1,53 @@
+# 수집 소스 정의. registry가 source_id로 collector를 찾고,
+# 각 항목은 collectors/<module>.py 에서 처리된다.
+# 활성화 토글: enabled: true/false.
+
+sources:
+  - id: hackernews
+    enabled: true
+    module: hackernews
+    description: "HackerNews top stories — 기술/문화 트렌드의 1순위"
+    params:
+      top_n: 50
+
+  - id: reddit_popular
+    enabled: false  # Step 8 활성화 예정
+    module: reddit
+    description: "/r/popular top — 전세계 사회·문화 시그널"
+    params:
+      subreddit: popular
+      limit: 50
+
+  - id: reddit_worldnews
+    enabled: false
+    module: reddit
+    description: "/r/worldnews top — 국제 뉴스"
+    params:
+      subreddit: worldnews
+      limit: 50
+
+  - id: google_news_ko
+    enabled: false
+    module: google_news_rss
+    description: "Google News RSS 한국어 — 한국 트렌드 메인"
+    params:
+      hl: ko
+      gl: KR
+
+  - id: google_news_en
+    enabled: false
+    module: google_news_rss
+    description: "Google News RSS 영어 — 글로벌 트렌드"
+    params:
+      hl: en
+      gl: US
+
+  - id: bbc
+    enabled: false
+    module: bbc
+    description: "BBC News RSS — 국제 뉴스 안정성"
+
+  - id: lobsters
+    enabled: false
+    module: lobsters
+    description: "Lobste.rs — HN 보완, 기술 깊이"

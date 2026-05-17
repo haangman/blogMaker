@@ -1,0 +1,35 @@
+# 글 카테고리 정의. categorize 모듈이 클러스터 요약을 이 enum 중 하나로 분류.
+# id는 영문 slug, label_ko는 글 프론트매터/UI 표시용.
+
+categories:
+  - id: tech
+    label_ko: 기술
+    hints: "AI/소프트웨어/하드웨어/스타트업/플랫폼/보안/오픈소스"
+  - id: culture
+    label_ko: 문화
+    hints: "콘텐츠/영화/책/음악/유행/밈/라이프스타일"
+  - id: economy
+    label_ko: 경제
+    hints: "시장/투자/주식/암호화폐/거시경제/기업/M&A"
+  - id: science
+    label_ko: 과학
+    hints: "연구/우주/기후/생명/의학 발견"
+  - id: society
+    label_ko: 사회
+    hints: "교육/노동/세대/사회 이슈/정책"
+  - id: international
+    label_ko: 국제
+    hints: "외교/분쟁/지역 뉴스/국제기구"
+  - id: sports
+    label_ko: 스포츠
+    hints: "리그/이적/대회/선수"
+  - id: entertainment
+    label_ko: 연예
+    hints: "K-pop/아이돌/배우/방송"
+  - id: other
+    label_ko: 기타
+    hints: "위 카테고리에 들지 않는 것"
+
+# 한 사이클에서 같은 카테고리 N편 초과 시 selector가 페널티
+diversity:
+  max_per_24h: 3

@@ -1,0 +1,40 @@
+# 품질 게이트 규칙. quality/* 모듈이 빌드타임에 persona.md의 "피하는 표현"과 합성한다.
+
+# 정형 AI 문구 / 매뉴얼체 — 본문에 등장하면 차단
+ai_smell_patterns:
+  - '오늘은\s.*에\s대해\s알아보(겠습니다|자|시죠)'
+  - '오늘은\s.*을(를)?\s소개해\s드리겠습니다'
+  - '지금부터\s.*을(를)?\s살펴'
+  - '결론적으로'
+  - '요약하(자면|면)'
+  - '마치며'
+  - '본\s(포스팅|글|글에서|문서)'
+  - '여러분(께서|들|만)?'
+  - '독자\s여러분'
+  - '~할\s수\s있습니다'  # 매뉴얼체. 한 편에 3회 이상이면 차단
+  - '하시기\s바랍니다'
+
+# 1인칭/2인칭 정책
+person:
+  forbidden_first_person: ['저']     # 페르소나가 "나"만 쓰도록
+  forbidden_address: ['여러분', '독자분', '구독자님']
+
+# 게이트 통계 임계치 (초기값 — 운영하면서 튜닝)
+stats:
+  paragraph_len_cv_min: 0.35        # std/mean. 균일하면 차단
+  paragraph_len_cv_exempt_below: 350   # 글 자체가 짧으면 면제 (자수)
+  token_ratio_block: 0.030          # 한 토큰이 본문의 3% 초과 시 차단
+  token_ratio_warn: 0.015
+  first_last_paragraph_jaccard_max: 0.30
+  same_sentence_ending_streak_max: 5
+
+length:
+  min_chars: 300
+  max_chars: 2200
+
+# 페르소나의 "자주 쓰는 표현" — 최소 1개가 자연 등장해야 통과
+must_contain_any: ['사실은', '근데', '솔직히', '재밌는 건', '이게 좀']
+
+# 재작성 루프 한도
+rewrite:
+  max_attempts: 2

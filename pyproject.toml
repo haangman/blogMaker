@@ -1,0 +1,63 @@
+[project]
+name = "blogmaker"
+version = "0.1.0"
+description = "트렌드 기반 블로그 자동 생성 — 사람처럼 자연스럽게 쓰고 자동 발행한다"
+requires-python = ">=3.11"
+authors = [{ name = "haangman" }]
+
+dependencies = [
+    # HTTP / 수집
+    "httpx[http2]>=0.27",
+    "feedparser>=6.0.11",
+    "trafilatura>=1.12",
+    "lingua-language-detector>=2.0",
+
+    # NLP / 클러스터링
+    "sentence-transformers>=3.0",
+    "hdbscan>=0.8.36",
+    "scikit-learn>=1.4",
+    "numpy>=1.26",
+
+    # 설정/CLI/로깅
+    "pydantic-settings>=2.4",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "structlog>=24.1",
+    "python-dotenv>=1.0",
+
+    # 재시도 / 시간
+    "tenacity>=9.0",
+
+    # 마크다운/슬러그
+    "python-frontmatter>=1.1",
+    "python-slugify>=8.0",
+
+    # DB 보조 (sqlite3는 표준 라이브러리)
+    "sqlite-utils>=3.36",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-vcr>=1.0",
+    "ruff>=0.6",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+blogmaker = "src.cli:app"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

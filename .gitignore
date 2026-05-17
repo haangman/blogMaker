@@ -35,4 +35,26 @@ Thumbs.db
 
 # 로그
 *.log
-logs/
+logs/*
+!logs/.gitkeep
+
+# 런타임 상태 (DB는 머신 로컬에만)
+data/state.sqlite
+data/state.sqlite-wal
+data/state.sqlite-shm
+data/.cycle.lock
+
+# 수집 원본 / 클러스터 스냅샷 / draft 글 — 머신 로컬
+data/trends/*
+!data/trends/.gitkeep
+data/clusters/*
+!data/clusters/.gitkeep
+data/drafts/*
+!data/drafts/.gitkeep
+data/persona_samples/*
+!data/persona_samples/.gitkeep
+
+# uv / 빌드
+.uv/
+dist/
+build/

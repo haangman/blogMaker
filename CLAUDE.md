@@ -49,15 +49,23 @@ AI 글의 흔한 티를 의도적으로 피한다:
 - 테마: minima 기본, 이후 변경 가능
 - baseurl이 `/J-Blog`로 설정돼 있어 발행 URL은 `https://haangman.github.io/J-Blog/`
 
-### 4. 자동 commit & push
-- **파일이 추가·수정될 때마다 자동으로 stage → commit → push**
-- 변화의 종류에 따라 **어느 리포에 푸시할지 자동 분기**:
-  - `_posts/`, `assets/img/`, `_config.yml` 변화 → **J-Blog**
-  - `src/`, `config/`, `CLAUDE.md`, `data/` 변화 → **blogMaker**
-- 커밋 메시지는 변경 내용을 요약 (예: `post: 새 글 "~~~" 발행`, `feat: 트렌드 수집기 Reddit 소스 추가`)
-- 푸시는 main 브랜치로, GitHub Pages가 자동 빌드
-- 실패(네트워크 오류, 충돌 등) 시 재시도 + 로그 남기기
-- 자동화 수단: 발행 함수 내부에서 해당 리포의 working directory를 향해 `git -C <repo> add/commit/push`를 호출
+### 4. 자동 commit & push (보수적 정책)
+
+**자동으로 push되는 것은 글(J-Blog)뿐.** 코드(blogMaker)는 자동 commit하지 않는다.
+
+- **J-Blog (글)** → 자동
+  - `_posts/`, `assets/img/`, `_drafts/`(드물게) 변화는 publisher가 직접 `git -C ../J-Blog add/commit/push`로 즉시 발행
+  - 커밋 메시지 컨벤션: `post: 새 글 "~~~" 발행`, `post: ~~~ 본문 수정`, `style: ...` (사이트 디자인)
+  - 푸시는 main 브랜치, GitHub Pages가 자동 빌드 (https://haangman.github.io/J-Blog/)
+- **blogMaker (코드)** → 수동
+  - 자동 시스템이 자기 자신을 push하는 건 위험 — 실패한 코드를 자동으로 메인에 올릴 수 있다
+  - 코드/설정/페르소나 변경은 사람(또는 Claude Code 세션이 사용자 명시 요청을 받았을 때만) commit·push
+  - `data/state.sqlite`, `data/trends/*`, `logs/` 등 런타임 산출물은 `.gitignore` 처리되어 애초에 push 대상이 아님
+
+### 5. 실패 처리
+- 외부 IO(수집·이미지·git push)는 모두 `tenacity` 지수 백오프 3회
+- 어떤 단계든 실패해도 사이클은 **graceful하게 종료** — 다음 사이클이 idempotent하게 재시도
+- 수집 0건이어도 사이클은 정상 종료
 
 ## 작업 시 지침 (Claude용)
 
@@ -94,19 +102,38 @@ AI 글의 흔한 티를 의도적으로 피한다:
 ### blogMaker (이 리포 — 코드)
 ```
 blogMaker/
-├── CLAUDE.md                 # 이 문서
-├── README.md                 # 사람용 소개 (미작성)
+├── CLAUDE.md
 ├── .gitignore
-├── .env.example              # 환경변수 템플릿 (미작성)
+├── .env.example
+├── pyproject.toml
 ├── config/
-│   └── persona.md            # 블로그 화자 페르소나 정의
-├── src/                      # (미작성)
-│   ├── trends/               # 트렌드 수집 모듈
-│   ├── writer/               # 글 생성 모듈 (자연스러움 로직 포함)
-│   ├── publisher/            # 마크다운 변환 + git 자동화 (J-Blog로 푸시)
-│   └── main.py (또는 .ts)    # 엔트리포인트
-└── data/
-    └── trends/               # 일자별 수집 결과
+│   ├── persona.md            # 사용자가 손으로 편집하는 원본
+│   ├── persona.generated.md  # 톤 분석기 출력 (자동, 미생성)
+│   ├── sources.yaml          # 수집 소스 정의
+│   ├── categories.yaml       # 카테고리 enum
+│   └── quality_rules.yaml    # 정형구/금칙어 regex
+├── src/
+│   ├── main.py               # Task Scheduler 호출 — 한 사이클
+│   ├── cli.py                # typer 기반 health/init/dry-run/run/analyze-persona
+│   ├── config_loader.py      # pydantic-settings + yaml
+│   ├── logging_setup.py      # structlog + 키 마스킹
+│   ├── llm/                  # Claude Code CLI 호출 게이트 (Step 4)
+│   ├── collectors/           # 소스별 1파일 + registry
+│   ├── normalize/            # 본문 추출·언어 감지·1차 디둡
+│   ├── cluster/              # 임베딩 → HDBSCAN → 사건 통합
+│   ├── categorize/           # 카테고리 분류
+│   ├── selector/             # 토픽 스코어링
+│   ├── persona/              # fetcher/analyzer/merger (CLI에서만)
+│   ├── writer/               # prompts/generator/postprocess
+│   ├── images/               # unsplash/pexels/attribution
+│   ├── quality/              # rules/ai_smell/stats/persona_check/gate
+│   ├── publisher/            # frontmatter/jekyll_writer/asset_copier/git_push
+│   ├── state/                # SQLite (schema.sql, db.py)
+│   └── utils/                # lockfile/timeutil/retry/http
+├── data/                     # 런타임 산출물 (gitignored)
+├── logs/                     # 사이클 로그 (gitignored)
+├── scripts/                  # run_cycle.ps1, setup_task.ps1, task_blogmaker.xml
+└── tests/
 ```
 
 ### J-Blog (sibling 리포 — 블로그)
@@ -126,7 +153,24 @@ J-Blog/
 - [x] 정적 사이트 생성기 선택 → **Jekyll**
 - [x] 페르소나 초안 작성 (`config/persona.md`) — 사용자 검토/수정 필요
 - [x] 블로그를 별도 리포(**J-Blog**)로 분리하고 Pages 활성화 → https://haangman.github.io/J-Blog/
-- [ ] 발행기(publisher) 구현 — J-Blog 경로로 글 쓰고 git push
-- [ ] 트렌드 수집기 구현
-- [ ] 글 생성기 구현 (자연스러움 가이드 반영)
-- [ ] 첫 글 발행
+- [x] 전체 설계 plan 승인 (`~/.claude/plans/enumerated-sauteeing-frog.md`)
+- [x] **Step 1: Scaffold** — pyproject, config_loader, logging_setup, SQLite 스키마, 잠금 파일, 기본 yaml들
+- [ ] Step 2: Publisher + 가짜 글 자동 발행 검증
+- [ ] Step 3: HackerNews collector
+- [ ] Step 4: Claude CLI 게이트 + writer + 첫 자동 발행
+- [ ] Step 5: cluster + categorize + selector
+- [ ] Step 6: persona analyzer CLI
+- [ ] Step 7: 이미지 + 게이트 확장
+- [ ] Step 8: 나머지 collectors + follow-up 모드
+- [ ] Step 9: Windows Task Scheduler 설정
+
+### 의존성 설치 (사용자가 실행)
+```powershell
+cd C:\Users\김은희\Downloads\blogMaker
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+copy .env.example .env   # 그 후 키 값 채워넣기
+python -m src.cli init
+python -m src.cli health
+```
