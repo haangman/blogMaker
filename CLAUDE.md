@@ -155,12 +155,12 @@ J-Blog/
 - [x] 블로그를 별도 리포(**J-Blog**)로 분리하고 Pages 활성화 → https://haangman.github.io/J-Blog/
 - [x] 전체 설계 plan 승인 (`~/.claude/plans/enumerated-sauteeing-frog.md`)
 - [x] **Step 1: Scaffold** — pyproject, config_loader, logging_setup, SQLite 스키마, 잠금 파일, 기본 yaml들
-- [ ] Step 2: Publisher + 가짜 글 자동 발행 검증
-- [ ] Step 3: HackerNews collector
-- [ ] Step 4: Claude CLI 게이트 + writer + 첫 자동 발행
-- [ ] Step 5: cluster + categorize + selector
-- [ ] Step 6: persona analyzer CLI
-- [ ] Step 7: 이미지 + 게이트 확장
+- [x] **Step 2: Publisher** — J-Blog 자동 commit/push + 리포 sanity 가드 + dry-run CLI
+- [x] **Step 3: Collectors v1** — base/Collector + HackerNews + normalize + 1차 dedupe
+- [x] **Step 4: Claude CLI 게이트 + writer + quality gate v1** — `claude -p --output-format json` subprocess + tenacity + DB 기록, writer 재작성 루프
+- [x] **Step 5: cluster + categorize + selector** — sentence-transformers + HDBSCAN(폴백 코사인+union-find) + simhash 매칭 + 카테고리 다양성 페널티
+- [x] **Step 6: persona analyzer CLI** — `analyze-persona --url ...` 으로 RSS/sitemap 수집 → 톤 분석 → `persona.generated.md` 자동 생성
+- [x] **Step 7: 이미지 + 게이트 확장** — Unsplash → Pexels 폴백, 통계/페르소나 체크 + must_contain_any 검사
 - [ ] Step 8: 나머지 collectors + follow-up 모드
 - [ ] Step 9: Windows Task Scheduler 설정
 

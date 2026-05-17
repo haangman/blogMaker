@@ -23,6 +23,13 @@ from src.state.db import DB_PATH, migrate
 app = typer.Typer(add_completion=False, help="blogMaker — 트렌드 기반 자동 블로그")
 
 
+from collections import defaultdict
+from urllib.parse import urlparse
+
+from src.persona import analyze as persona_analyze
+from src.persona import fetch_articles, fetch_bodies, save_generated, save_samples
+
+
 @app.command()
 def health() -> None:
     """Claude CLI 설치/세션과 환경변수가 정상인지 확인."""
@@ -143,6 +150,62 @@ def dry_run(
         typer.echo("       https://haangman.github.io/J-Blog/")
     else:
         typer.secho("[--]  push 스킵 (로컬 파일만 작성)", fg="yellow")
+
+
+@app.command()
+def run() -> None:
+    """메인 사이클 1회 실행 (Task Scheduler 가 호출하는 것과 동일)."""
+    from src.main import run_cycle
+
+    rc = run_cycle()
+    raise typer.Exit(code=rc)
+
+
+@app.command("analyze-persona")
+def analyze_persona(
+    urls: list[str] = typer.Option(
+        ...,
+        "--url",
+        "-u",
+        help="블로그/RSS URL. 여러 개 가능 (--url A --url B).",
+    ),
+    per_url_limit: int = typer.Option(20, help="URL 당 최대 분석 글 수"),
+) -> None:
+    """사용자 지정 한국 블로거 글을 분석해 persona.generated.md 자동 작성."""
+    setup_logging()
+    log = get_logger("cli.analyze_persona")
+    log.info("persona.start", urls=urls)
+
+    # 도메인별 그룹핑
+    by_domain: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for u in urls:
+        candidates = fetch_articles(u, limit=per_url_limit)
+        log.info("persona.candidates", url=u, n=len(candidates))
+        bodies = fetch_bodies(candidates[:per_url_limit])
+        if not bodies:
+            typer.secho(f"[WARN] {u} 에서 본문 추출 실패", fg="yellow")
+            continue
+        domain = urlparse(u).netloc or "unknown"
+        save_samples(domain, bodies)
+        by_domain[domain].extend(bodies)
+        typer.echo(f"[OK]  {domain}: {len(bodies)} 편 수집")
+
+    flat = [pair for items in by_domain.values() for pair in items]
+    if not flat:
+        typer.secho("[FAIL] 분석할 본문이 0편. URL 확인 필요.", fg="red")
+        raise typer.Exit(code=1)
+
+    typer.echo(f"분석 중... (총 {len(flat)} 편)")
+    analyzed = persona_analyze(flat)
+    if not analyzed:
+        typer.secho("[FAIL] 분석 결과 비어 있음.", fg="red")
+        raise typer.Exit(code=1)
+
+    target, diff = save_generated(analyzed, sources=urls)
+    typer.secho(f"[OK]  persona.generated.md 갱신: {target}", fg="green")
+    if diff:
+        typer.echo("\n--- diff ---")
+        typer.echo(diff[:4000])
 
 
 def main() -> None:
