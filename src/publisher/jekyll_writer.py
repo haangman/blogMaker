@@ -12,7 +12,7 @@ from pathlib import Path
 
 from slugify import slugify
 
-from src.config_loader import load_categories
+from src.config_loader import load_categories, load_yaml
 from src.publisher.frontmatter import build_markdown
 from src.publisher.models import ArticleDraft, ImageRef
 from src.utils.hashing import short_hash
@@ -33,8 +33,12 @@ def _strip_unmatched_markers(body: str) -> str:
     return body
 
 
-def _category_label_ko(category_id: str) -> str:
-    for cat in load_categories().get("categories", []):
+def _category_label_ko(category_id: str, categories_file: str = "categories.yaml") -> str:
+    if categories_file == "categories.yaml":
+        cats = load_categories().get("categories", [])
+    else:
+        cats = load_yaml(categories_file).get("categories", [])
+    for cat in cats:
         if cat.get("id") == category_id:
             return cat.get("label_ko", category_id)
     return category_id

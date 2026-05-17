@@ -1,0 +1,52 @@
+# AI 기술 블로그용 수집 소스.
+
+sources:
+  - id: arxiv_cs_ai
+    enabled: true
+    module: arxiv
+    description: "arXiv cs.AI / cs.LG / cs.CL 최신 논문"
+    params:
+      categories: [cs.AI, cs.LG, cs.CL]
+      limit: 50
+
+  - id: hf_papers
+    enabled: true
+    module: rss_feed
+    description: "Hugging Face Papers RSS"
+    params:
+      url: "https://huggingface.co/papers/feed"
+      limit: 30
+
+  - id: hackernews_ai
+    enabled: true
+    module: hackernews
+    description: "HackerNews top — categorize 단계에서 AI 토픽만 통과"
+    params:
+      top_n: 50
+
+  - id: reddit_ml
+    enabled: true
+    module: reddit
+    description: "/r/MachineLearning top"
+    params:
+      subreddit: MachineLearning
+      limit: 40
+      t: day
+
+  - id: reddit_local_llama
+    enabled: true
+    module: reddit
+    description: "/r/LocalLLaMA top — 오픈 LLM 커뮤니티"
+    params:
+      subreddit: LocalLLaMA
+      limit: 40
+      t: day
+
+  - id: reddit_singularity
+    enabled: true
+    module: reddit
+    description: "/r/singularity — AI 미래·트렌드 토픽"
+    params:
+      subreddit: singularity
+      limit: 30
+      t: day

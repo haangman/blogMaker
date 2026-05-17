@@ -14,6 +14,7 @@ from __future__ import annotations
 import random
 from pathlib import Path
 
+from src.blogs import BlogProfile
 from src.cluster.merge import TopicCluster
 from src.config_loader import CONFIG_DIR, load_quality_rules
 from src.selector.followup import FollowupContext
@@ -23,9 +24,24 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
-def build_system_prompt(*, rewrite_feedback: list[str] | None = None) -> str:
-    persona_generated = _read_text(CONFIG_DIR / "persona.generated.md")
-    persona_user = _read_text(CONFIG_DIR / "persona.md")
+def build_system_prompt(
+    *,
+    rewrite_feedback: list[str] | None = None,
+    blog: BlogProfile | None = None,
+) -> str:
+    if blog is None:
+        from src.blogs import for_id
+        try:
+            blog = for_id("trends")
+        except KeyError:
+            from src.blogs import _DEFAULT_BLOG
+            blog = _DEFAULT_BLOG
+
+    persona_texts: list[tuple[str, str]] = []
+    for pf in blog.persona_files:
+        text = _read_text(CONFIG_DIR / pf)
+        if text:
+            persona_texts.append((pf, text))
 
     rules = load_quality_rules()
     avoid = rules.get("ai_smell_patterns", [])
@@ -95,11 +111,36 @@ def build_system_prompt(*, rewrite_feedback: list[str] | None = None) -> str:
         '- [IMAGE: "atmosphere mood"]             ← 감정·분위기 단독'
     )
 
-    if persona_generated:
-        sections.append("## 자동 분석된 톤 (보조)\n\n" + persona_generated)
-    if persona_user:
-        # 사용자 편집 원본이 마지막에 위치 — 충돌 시 우선
-        sections.append("## 사용자 정의 페르소나 (우선)\n\n" + persona_user)
+    # AI 블로그용 추가 — mermaid 다이어그램 + 코드 펜스 가이드
+    if blog.id == "ai":
+        sections.append(
+            "[AI 기술 다이어그램 — mermaid]\n"
+            "기술 흐름·관계·구조를 그림으로 보이면 이해가 빨라질 자리에서는 "
+            "마크다운 mermaid 코드블록을 본문에 직접 삽입해라:\n\n"
+            "    ```mermaid\n"
+            "    graph LR\n"
+            "      User --> Encoder\n"
+            "      Encoder --> Attention\n"
+            "      Attention --> Decoder\n"
+            "      Decoder --> Output\n"
+            "    ```\n\n"
+            "- 한 글에 다이어그램 **0~2개**. 너무 많으면 산만.\n"
+            "- 박스+화살표 그래프 / 시퀀스 다이어그램 / 플로우차트 위주.\n"
+            "- 한국어 라벨 OK (mermaid 가 한글 지원).\n"
+            "- 다이어그램이 글 흐름과 직접 연결되지 않으면 차라리 빼라.\n"
+            "\n"
+            "[코드 스니펫]\n"
+            "- 짧은 함수·CLI 명령·yaml 한 토막 정도. 30 줄 넘으면 의미 약해진다.\n"
+            "- 언어 명시: ```python ```bash ```yaml ```mermaid.\n"
+            "- 가짜 코드 만들지 마. 본인이 정말 돌려보지 않은 코드는 적당히 둘러대지 말고 '의사 코드' 라고 명시."
+        )
+
+    # 페르소나 — 분석된 톤(보조) 먼저, 사용자 정의(우선) 나중
+    # blog.persona_files 의 순서 그대로 → 마지막이 우선
+    n_persona = len(persona_texts)
+    for i, (fname, text) in enumerate(persona_texts):
+        label = "자동 분석된 톤 (보조)" if i < n_persona - 1 else "사용자 정의 페르소나 (우선)"
+        sections.append(f"## {label} — `{fname}`\n\n{text}")
 
     if rewrite_feedback:
         sections.append(
@@ -113,6 +154,8 @@ def build_system_prompt(*, rewrite_feedback: list[str] | None = None) -> str:
 def build_user_prompt(
     cluster: TopicCluster,
     followup: FollowupContext | None = None,
+    *,
+    blog: BlogProfile | None = None,
 ) -> str:
     # 길이대 변주 — V2 에서 분포 상향
     lengths = [(800, 1200), (1200, 1700), (1700, 2400)]

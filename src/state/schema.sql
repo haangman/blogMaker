@@ -17,11 +17,13 @@ CREATE TABLE IF NOT EXISTS published (
     category            TEXT,
     post_path           TEXT NOT NULL,
     published_at        TEXT NOT NULL,
-    source_urls         TEXT
+    source_urls         TEXT,
+    blog_id             TEXT NOT NULL DEFAULT 'trends'
 );
 
 CREATE INDEX IF NOT EXISTS idx_pub_at      ON published(published_at);
 CREATE INDEX IF NOT EXISTS idx_pub_simhash ON published(cluster_simhash);
+CREATE INDEX IF NOT EXISTS idx_pub_blog    ON published(blog_id);
 
 CREATE TABLE IF NOT EXISTS source_health (
     source_id        TEXT PRIMARY KEY,
@@ -38,7 +40,8 @@ CREATE TABLE IF NOT EXISTS article_attempts (
     gate_score        REAL,
     gate_failures     TEXT,
     outcome           TEXT NOT NULL,
-    created_at        TEXT NOT NULL
+    created_at        TEXT NOT NULL,
+    blog_id           TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_attempts_simhash ON article_attempts(cluster_simhash);
@@ -54,7 +57,26 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     duration_ms     INTEGER,
     success         INTEGER NOT NULL,
     error           TEXT,
-    at              TEXT NOT NULL
+    at              TEXT NOT NULL,
+    blog_id         TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_llm_at ON llm_calls(at);
+
+-- V4: backlog (AI 블로그용)
+CREATE TABLE IF NOT EXISTS backlog (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    blog_id         TEXT NOT NULL,
+    topic           TEXT NOT NULL,
+    category        TEXT,
+    priority        TEXT NOT NULL DEFAULT 'medium',  -- high|medium|low
+    depth           TEXT NOT NULL DEFAULT 'intro',   -- intro|intermediate|deep
+    topic_simhash   INTEGER,
+    status          TEXT NOT NULL DEFAULT 'pending', -- pending|published|skipped
+    post_path       TEXT,
+    created_at      TEXT NOT NULL,
+    published_at    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_backlog_status ON backlog(blog_id, status);
+CREATE INDEX IF NOT EXISTS idx_backlog_simhash ON backlog(topic_simhash);

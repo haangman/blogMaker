@@ -6,7 +6,7 @@ import importlib
 import os
 
 from src.collectors.base import Collector
-from src.config_loader import load_sources
+from src.config_loader import load_sources, load_yaml
 from src.logging_setup import get_logger
 from src.state.db import connect
 
@@ -20,6 +20,8 @@ _MODULE_CLASS = {
     "bbc": "BBCCollector",
     "lobsters": "LobstersCollector",
     "korean_news": "KoreanNewsCollector",
+    "arxiv": "ArxivCollector",
+    "rss_feed": "GenericRSSCollector",   # _rss_common.RSSCollector wrapper
 }
 
 
@@ -40,10 +42,12 @@ def _disabled_source_ids() -> set[str]:
     return out
 
 
-def load_active_collectors() -> list[Collector]:
+def load_active_collectors(sources_file: str = "sources.yaml") -> list[Collector]:
+    """sources_file (yaml) 의 enabled 소스만 인스턴스화."""
     out: list[Collector] = []
     disabled = _disabled_source_ids()
-    for src in load_sources().get("sources", []):
+    raw = load_yaml(sources_file) if sources_file != "sources.yaml" else load_sources()
+    for src in (raw or {}).get("sources", []):
         if not src.get("enabled"):
             continue
         if src["id"] in disabled:

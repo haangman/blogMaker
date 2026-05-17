@@ -1,0 +1,45 @@
+# AI 기술 블로그 카테고리. categorize 모듈이 클러스터/백로그 토픽을 이 enum 중 하나로 분류.
+
+categories:
+  - id: llm
+    label_ko: "대규모 언어 모델"
+    hints: "GPT/Claude/Gemini/Llama 등 LLM, 프롬프팅, 컨텍스트 길이, 토큰화"
+  - id: vision
+    label_ko: "컴퓨터 비전"
+    hints: "이미지/영상 인식·생성, CLIP, ViT, SAM, Stable Diffusion, NeRF"
+  - id: rag
+    label_ko: "RAG·검색증강"
+    hints: "벡터 DB, 임베딩, BM25, 하이브리드 검색, reranker"
+  - id: agents
+    label_ko: "AI 에이전트"
+    hints: "도구 사용, 자율 워크플로, LangGraph, AutoGPT, MCP"
+  - id: training
+    label_ko: "학습·파인튜닝"
+    hints: "사전학습, RLHF, DPO, LoRA, QLoRA, distillation"
+  - id: inference
+    label_ko: "추론·최적화"
+    hints: "vLLM, llama.cpp, 양자화, KV cache, speculative decoding, batching"
+  - id: multimodal
+    label_ko: "멀티모달"
+    hints: "음성·이미지·비디오·텍스트 융합, GPT-4o, Gemini, Sora"
+  - id: frameworks
+    label_ko: "도구·프레임워크"
+    hints: "LangChain, LlamaIndex, DSPy, Haystack, Hugging Face transformers"
+  - id: hardware
+    label_ko: "하드웨어·반도체"
+    hints: "GPU, TPU, NPU, NVIDIA·AMD·Apple Silicon, 메모리 대역폭"
+  - id: evaluation
+    label_ko: "벤치마크·평가"
+    hints: "MMLU, HumanEval, Chatbot Arena, hallucination 측정"
+  - id: ethics
+    label_ko: "윤리·안전"
+    hints: "alignment, jailbreak, RLHF 한계, 규제, 저작권"
+  - id: industry
+    label_ko: "산업·회사 동향"
+    hints: "OpenAI, Anthropic, Google, Meta, 투자, 인수합병, 정책"
+  - id: other
+    label_ko: "기타"
+    hints: "위 카테고리에 들지 않는 것"
+
+diversity:
+  max_per_24h: 4

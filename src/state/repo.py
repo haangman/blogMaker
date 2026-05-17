@@ -20,12 +20,14 @@ def record_published(
     post_path: str,
     source_urls: list[str],
     cluster_embedding: bytes | None = None,
+    blog_id: str = "trends",
 ) -> int:
     cur = conn.execute(
         """
         INSERT INTO published
-        (cluster_simhash, cluster_embedding, title, category, post_path, published_at, source_urls)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        (cluster_simhash, cluster_embedding, title, category, post_path,
+         published_at, source_urls, blog_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             to_signed64(cluster_simhash),
@@ -35,6 +37,7 @@ def record_published(
             post_path,
             iso_now(),
             json.dumps(source_urls, ensure_ascii=False),
+            blog_id,
         ),
     )
     return cur.lastrowid or 0

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from src.blogs import BlogProfile
 from src.cluster.merge import TopicCluster
 from src.config_loader import DATA_DIR, load_quality_rules
 from src.llm import ClaudeCLIError, ask
@@ -46,6 +47,8 @@ def _title_for_article(cluster: TopicCluster, body: str) -> str:
 def write_article(
     cluster: TopicCluster,
     followup: FollowupContext | None = None,
+    *,
+    blog: BlogProfile | None = None,
 ) -> tuple[ArticleDraft, GateResult]:
     rules = load_quality_rules()
     max_rewrites = int((rules.get("rewrite") or {}).get("max_attempts", 2))
@@ -55,8 +58,11 @@ def write_article(
     last_gate: GateResult | None = None
 
     for attempt in range(1, max_rewrites + 2):
-        system = build_system_prompt(rewrite_feedback=feedback if attempt > 1 else None)
-        user = build_user_prompt(cluster, followup=followup)
+        system = build_system_prompt(
+            rewrite_feedback=feedback if attempt > 1 else None,
+            blog=blog,
+        )
+        user = build_user_prompt(cluster, followup=followup, blog=blog)
         try:
             resp = ask(user, system_prompt=system, model="opus",
                        purpose=f"write_attempt_{attempt}")

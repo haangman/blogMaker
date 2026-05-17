@@ -131,12 +131,12 @@ def _merge_with_llm(items: list[NormalizedItem]) -> tuple[str, str]:
     return title, summary
 
 
-def enrich_with_llm(cluster: TopicCluster) -> TopicCluster:
+def enrich_with_llm(cluster: TopicCluster, *, categories_file: str = "categories.yaml") -> TopicCluster:
     """선정된 클러스터 1개를 LLM 으로 통합 요약 + 카테고리 분류 + simhash 재계산."""
     if cluster.enriched:
         return cluster
     title, summary = _merge_with_llm(cluster.items)
-    cat = classify_category(title, summary)
+    cat = classify_category(title, summary, categories_file=categories_file)
     cluster.event_title = title
     cluster.event_summary = summary
     cluster.category = cat

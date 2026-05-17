@@ -1,16 +1,21 @@
-"""클러스터 요약을 categories.yaml 의 enum 중 하나로 분류."""
+"""클러스터 요약을 카테고리 enum 중 하나로 분류."""
 
 from __future__ import annotations
 
-from src.config_loader import load_categories
+from functools import lru_cache
+
+from src.config_loader import load_categories, load_yaml
 from src.llm import ClaudeCLIError, ask
 from src.logging_setup import get_logger
 
 log = get_logger("categorize")
 
 
-def _build_system() -> str:
-    cats = load_categories().get("categories", [])
+def _build_system(categories_file: str) -> str:
+    if categories_file == "categories.yaml":
+        cats = load_categories().get("categories", [])
+    else:
+        cats = load_yaml(categories_file).get("categories", [])
     lines = []
     for c in cats:
         lines.append(f"- {c['id']} ({c.get('label_ko', '')}): {c.get('hints', '')}")
@@ -22,17 +27,27 @@ def _build_system() -> str:
     )
 
 
-_SYSTEM_CACHE: str | None = None
+@lru_cache(maxsize=4)
+def _system_cache(categories_file: str) -> tuple[str, frozenset[str]]:
+    sys_prompt = _build_system(categories_file)
+    if categories_file == "categories.yaml":
+        cats = load_categories().get("categories", [])
+    else:
+        cats = load_yaml(categories_file).get("categories", [])
+    valid = frozenset(c["id"] for c in cats)
+    return sys_prompt, valid
 
 
-def classify_category(title: str, summary: str) -> str:
-    global _SYSTEM_CACHE
-    if _SYSTEM_CACHE is None:
-        _SYSTEM_CACHE = _build_system()
-    valid = {c["id"] for c in load_categories().get("categories", [])}
+def classify_category(
+    title: str,
+    summary: str,
+    *,
+    categories_file: str = "categories.yaml",
+) -> str:
+    sys_prompt, valid = _system_cache(categories_file)
     user = f"제목: {title}\n요약: {summary}"
     try:
-        resp = ask(user, system_prompt=_SYSTEM_CACHE, model="opus", purpose="categorize")
+        resp = ask(user, system_prompt=sys_prompt, model="opus", purpose="categorize")
     except ClaudeCLIError as e:
         log.warning("categorize.failed", error=str(e))
         return "other"

@@ -23,7 +23,7 @@ log = get_logger("selector")
 
 
 # 소스별 "일상 토픽 친화도" — 0(완전 기술/전문) ~ 1(완전 일상)
-# 일상 토픽 우선을 위해 selector 점수에 가중치로 들어간다.
+# 일상 블로그(trends)의 selector 가중치
 SOURCE_LIFESTYLE: dict[str, float] = {
     "hackernews":       0.10,
     "lobsters":         0.10,
@@ -35,6 +35,24 @@ SOURCE_LIFESTYLE: dict[str, float] = {
     "reddit_popular":   0.90,
 }
 _LIFESTYLE_DEFAULT = 0.40
+
+# AI 기술 블로그(ai)의 selector 가중치 — AI 관련도가 높을수록 +
+SOURCE_AI_RELEVANCE: dict[str, float] = {
+    "arxiv_cs_ai":        0.95,
+    "hf_papers":          0.95,
+    "reddit_ml":          0.95,
+    "reddit_local_llama": 0.90,
+    "reddit_singularity": 0.70,
+    "hackernews_ai":      0.55,   # HN 은 AI 토픽이 절반
+    "hackernews":         0.35,   # 일반 HN 도 일부 AI
+}
+_AI_DEFAULT = 0.30
+
+
+_PROFILE_WEIGHTS: dict[str, tuple[dict[str, float], float]] = {
+    "lifestyle": (SOURCE_LIFESTYLE, _LIFESTYLE_DEFAULT),
+    "ai":        (SOURCE_AI_RELEVANCE, _AI_DEFAULT),
+}
 
 
 # 같은 사이클 안에서 두 클러스터가 시각적으로 너무 비슷하지 않게 가드.
@@ -80,7 +98,16 @@ def _lifestyle_bonus(cluster: TopicCluster) -> float:
     return s / len(cluster.items)
 
 
-def score(cluster: TopicCluster, category_counts: Counter) -> float:
+def _profile_bonus(cluster: TopicCluster, profile: str) -> float:
+    if not cluster.items:
+        return 0.0
+    weights, default = _PROFILE_WEIGHTS.get(profile, (SOURCE_LIFESTYLE, _LIFESTYLE_DEFAULT))
+    s = sum(weights.get(it.source_id, default) for it in cluster.items)
+    return s / len(cluster.items)
+
+
+def score(cluster: TopicCluster, category_counts: Counter,
+          *, selector_profile: str = "lifestyle") -> float:
     diversity = cluster.source_diversity
     size = len(cluster.items)
     freshness = 1.0
@@ -92,19 +119,24 @@ def score(cluster: TopicCluster, category_counts: Counter) -> float:
     if category_counts.get(cluster.category, 0) >= diversity_cap:
         cat_pen = 1.0
 
-    lifestyle = _lifestyle_bonus(cluster)
+    profile_score = _profile_bonus(cluster, selector_profile)
 
     s = (
         diversity * 0.30
         + math.log1p(size) * 0.20
         + freshness * 0.25
-        + lifestyle * 0.25
+        + profile_score * 0.25
         - cat_pen
     )
     return s
 
 
-def pick_topics(clusters: list[TopicCluster], n: int = 5) -> list[TopicCluster]:
+def pick_topics(
+    clusters: list[TopicCluster],
+    n: int = 5,
+    *,
+    selector_profile: str = "lifestyle",
+) -> list[TopicCluster]:
     """점수 상위 + 중복 가드 + in-cycle 시각적 분리로 N개 후보를 고른다."""
     if not clusters:
         return []
@@ -118,7 +150,7 @@ def pick_topics(clusters: list[TopicCluster], n: int = 5) -> list[TopicCluster]:
                      title=c.event_title, simhash=c.simhash,
                      window_days=settings.duplicate_window_days)
             continue
-        scored.append((score(c, cat_counts), c))
+        scored.append((score(c, cat_counts, selector_profile=selector_profile), c))
     if not scored:
         return []
     scored.sort(key=lambda t: -t[0])
@@ -132,7 +164,8 @@ def pick_topics(clusters: list[TopicCluster], n: int = 5) -> list[TopicCluster]:
                  idx=len(picked), title=c.event_title,
                  category=c.category, score=round(sc, 3),
                  sources=c.source_diversity, size=len(c.items),
-                 lifestyle=round(_lifestyle_bonus(c), 2))
+                 profile=selector_profile,
+                 profile_bonus=round(_profile_bonus(c, selector_profile), 2))
         if len(picked) >= n:
             break
     return picked

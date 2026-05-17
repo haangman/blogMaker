@@ -1,9 +1,19 @@
 """한 사이클 엔트리포인트. Windows Task Scheduler가 이 모듈을 호출.
 
-V3 흐름: phase 0(부팅) → 1(수집) → 2(정규화) → 3(클러스터링) →
-        5(선정 N개) → 각 후보마다 4(분류) → 6(글) → 7(이미지) → 8(게이트) → 9(발행)
-        → 10(정리).
-각 글은 독립적 — 한 편이 실패해도 다음 편은 계속.
+V4 흐름:
+  phase 0(부팅 + 잠금 + DB 마이그레이션 + LLM 카운터 리셋)
+  → enabled 블로그 각각:
+      phase 1(수집, blog.sources_file)
+      phase 2(정규화)
+      phase 3(클러스터링, LLM 없이)
+      phase 5(N개 선정)
+      각 후보마다:
+        phase 4(enrich, blog.categories_file)
+        phase 6(write, blog.persona_files / mermaid 안내)
+        phase 7(images)
+        phase 8(gate + rewrite loop)
+        phase 9(publish, blog.repo_path)
+      phase 10(정리)
 """
 
 from __future__ import annotations
@@ -11,6 +21,7 @@ from __future__ import annotations
 import json
 import sys
 
+from src.blogs import BlogProfile, enabled_blogs
 from src.cluster.merge import cluster_only, enrich_with_llm
 from src.cluster.simhash import hamming
 from src.collectors.registry import load_active_collectors
@@ -49,33 +60,38 @@ def _save_trends_dump(items: list, suffix: str = "") -> None:
     (dump_dir / fname).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _publish_one(candidate, *, log, settings, in_cycle_simhashes: list[int]) -> bool:
-    """후보 클러스터 1개를 enrich → 게이트 통과 시 발행. 성공이면 True."""
-    candidate = enrich_with_llm(candidate)
+def _publish_one(
+    candidate,
+    *,
+    log,
+    blog: BlogProfile,
+    in_cycle_simhashes: list[int],
+    settings,
+) -> bool:
+    candidate = enrich_with_llm(candidate, categories_file=blog.categories_file)
 
-    # enrich 후 정확한 simhash 로 다시 한 번 중복 검사 (이전 글 + in-cycle 양쪽)
     if is_recent_duplicate(candidate.simhash, days=settings.duplicate_window_days):
         log.info("article.skip_dup_after_enrich",
-                 title=candidate.event_title, simhash=candidate.simhash)
+                 title=candidate.event_title, simhash=candidate.simhash, blog=blog.id)
         return False
     if any(hamming(candidate.simhash, h) <= IN_CYCLE_SIMHASH_GAP for h in in_cycle_simhashes):
         log.info("article.skip_in_cycle_dup",
-                 title=candidate.event_title, simhash=candidate.simhash)
+                 title=candidate.event_title, simhash=candidate.simhash, blog=blog.id)
         return False
 
     log.info("article.enriched",
              title=candidate.event_title, category=candidate.category,
-             simhash=candidate.simhash)
+             simhash=candidate.simhash, blog=blog.id)
 
     followup = find_followup(candidate)
     if followup:
         log.info("article.followup_attached",
-                 prev=followup.previous_title, cosine=followup.cosine)
+                 prev=followup.previous_title, cosine=followup.cosine, blog=blog.id)
 
-    article, gate = write_article(candidate, followup=followup)
+    article, gate = write_article(candidate, followup=followup, blog=blog)
     if gate.outcome != "pass":
         log.warning("article.gate_failed", title=candidate.event_title,
-                    failures=gate.failures, score=gate.score)
+                    failures=gate.failures, score=gate.score, blog=blog.id)
         return False
 
     if followup and followup.previous_url:
@@ -83,9 +99,9 @@ def _publish_one(candidate, *, log, settings, in_cycle_simhashes: list[int]) -> 
 
     attach_images(article, candidate)
 
-    info = publish(article)
+    info = publish(article, blog=blog)
     log.info("article.published", path=str(info.post_path),
-             pushed=info.pushed, sha=info.commit_sha)
+             pushed=info.pushed, sha=info.commit_sha, blog=blog.id)
 
     with connect() as conn:
         record_published(
@@ -97,100 +113,123 @@ def _publish_one(candidate, *, log, settings, in_cycle_simhashes: list[int]) -> 
             source_urls=[s.url for s in article.sources],
             cluster_embedding=encode_embedding(candidate.embedding)
                 if candidate.embedding is not None else None,
+            blog_id=blog.id,
         )
     in_cycle_simhashes.append(candidate.simhash)
     return True
 
 
-def run_cycle() -> int:
+def run_for_blog(blog: BlogProfile) -> int:
+    log = get_logger("main")
+    settings = get_settings()
+    log.info("blog.start", blog=blog.id, name=blog.name,
+             repo=blog.repo_name, articles_per_cycle=blog.articles_per_cycle)
+
+    # phase 1: collect
+    collectors = load_active_collectors(blog.sources_file)
+    log.info("blog.collectors", n=len(collectors), blog=blog.id)
+    raws = []
+    for c in collectors:
+        try:
+            fetched = c.fetch()
+            raws.extend(fetched)
+            with connect() as conn:
+                record_source_success(conn, c.source_id)
+        except Exception as e:
+            log.warning("collector.failed", source=c.source_id, error=str(e), blog=blog.id)
+            try:
+                with connect() as conn:
+                    record_source_failure(conn, c.source_id, str(e)[:500])
+            except Exception:
+                log.exception("collector.health_record_failed")
+    log.info("blog.collected", total=len(raws), blog=blog.id)
+    if not raws:
+        log.info("blog.empty_collect", blog=blog.id)
+        return 0
+
+    # phase 2: normalize
+    items = normalize_batch(raws, fetch_body=False)
+    log.info("blog.normalized", n=len(items), blog=blog.id)
+    _save_trends_dump(items, suffix=blog.id)
+
+    # phase 3: cluster
+    clusters = cluster_only(items)
+    log.info("blog.clusters", n=len(clusters), blog=blog.id)
+    if not clusters:
+        log.info("blog.no_clusters", blog=blog.id)
+        return 0
+
+    # phase 5: select N
+    candidates = pick_topics(
+        clusters,
+        n=blog.articles_per_cycle,
+        selector_profile=blog.selector_profile,
+    )
+    log.info("blog.candidates", n=len(candidates), blog=blog.id)
+    if not candidates:
+        log.info("blog.nothing_to_publish", blog=blog.id)
+        return 0
+
+    in_cycle_simhashes: list[int] = []
+    published_count = 0
+    for idx, candidate in enumerate(candidates, 1):
+        try:
+            ok = _publish_one(
+                candidate, log=log, blog=blog,
+                in_cycle_simhashes=in_cycle_simhashes, settings=settings,
+            )
+            if ok:
+                published_count += 1
+        except CycleQuotaExceeded:
+            log.error("cycle.quota_exceeded_midway",
+                      published=published_count, blog=blog.id,
+                      llm_calls=get_cycle_call_count())
+            raise
+        except Exception:
+            log.exception("article.unhandled", idx=idx, blog=blog.id,
+                          title=getattr(candidate, "event_title", "?"))
+            continue
+
+    # TODO V4-8: backlog 보충 — 트렌드 published_count < articles_per_cycle 면 backlog 에서 채움
+    log.info("blog.end", blog=blog.id, published=published_count,
+             attempted=len(candidates), llm_calls=get_cycle_call_count())
+    return published_count
+
+
+def run_cycle(blog_ids: list[str] | None = None) -> int:
     setup_logging()
     log = get_logger("main")
     settings = get_settings()
 
     try:
         with cycle_lock():
-            log.info("cycle.start",
-                     dry_run=settings.dry_run, ts=iso_now(),
-                     articles_per_cycle=settings.articles_per_cycle,
-                     duplicate_window_days=settings.duplicate_window_days)
+            log.info("cycle.start", dry_run=settings.dry_run, ts=iso_now())
             migrate()
             reset_cycle_counter()
 
-            # phase 1: collect
-            collectors = load_active_collectors()
-            log.info("cycle.collectors", n=len(collectors))
-            raws = []
-            for c in collectors:
+            blogs = enabled_blogs()
+            if blog_ids:
+                blogs = [b for b in blogs if b.id in blog_ids]
+            log.info("cycle.blogs", ids=[b.id for b in blogs])
+
+            total_published = 0
+            for blog in blogs:
                 try:
-                    fetched = c.fetch()
-                    raws.extend(fetched)
-                    with connect() as conn:
-                        record_source_success(conn, c.source_id)
-                except Exception as e:
-                    log.warning("collector.failed", source=c.source_id, error=str(e))
-                    try:
-                        with connect() as conn:
-                            record_source_failure(conn, c.source_id, str(e)[:500])
-                    except Exception:
-                        log.exception("collector.health_record_failed")
-            log.info("cycle.collected", total=len(raws))
-            if not raws:
-                log.info("cycle.empty_collect")
-                return 0
-
-            # phase 2: normalize
-            items = normalize_batch(raws, fetch_body=False)
-            log.info("cycle.normalized", n=len(items))
-            _save_trends_dump(items)
-
-            # phase 3: cluster (LLM 없이)
-            clusters = cluster_only(items)
-            log.info("cycle.clusters", n=len(clusters))
-            if not clusters:
-                log.info("cycle.no_clusters")
-                return 0
-
-            # phase 5: select N
-            candidates = pick_topics(clusters, n=settings.articles_per_cycle)
-            log.info("cycle.candidates", n=len(candidates))
-            if not candidates:
-                log.info("cycle.nothing_to_publish")
-                return 0
-
-            # phase 6~9: 후보 마다 enrich → write → gate → image → publish
-            in_cycle_simhashes: list[int] = []
-            published_count = 0
-            for idx, candidate in enumerate(candidates, 1):
-                try:
-                    ok = _publish_one(
-                        candidate,
-                        log=log,
-                        settings=settings,
-                        in_cycle_simhashes=in_cycle_simhashes,
-                    )
-                    if ok:
-                        published_count += 1
-                except CycleQuotaExceeded:
-                    log.error("cycle.quota_exceeded_midway",
-                              published=published_count,
-                              llm_calls=get_cycle_call_count())
-                    raise
+                    total_published += run_for_blog(blog)
+                except CycleQuotaExceeded as e:
+                    log.error("cycle.quota_stop", reason=str(e),
+                              published_so_far=total_published)
+                    break
                 except Exception:
-                    log.exception("article.unhandled", idx=idx,
-                                  title=getattr(candidate, "event_title", "?"))
+                    log.exception("blog.unhandled", blog=blog.id)
                     continue
 
             log.info("cycle.end", status="ok",
-                     published=published_count,
-                     attempted=len(candidates),
+                     total_published=total_published,
                      llm_calls=get_cycle_call_count())
             return 0
     except LockBusy as e:
         log.warning("cycle.lock_busy", reason=str(e))
-        return 0
-    except CycleQuotaExceeded as e:
-        log.error("cycle.quota_exceeded", reason=str(e),
-                  llm_calls=get_cycle_call_count())
         return 0
     except Exception:
         log.exception("cycle.unhandled_error", llm_calls=get_cycle_call_count())

@@ -32,13 +32,19 @@ def _run(args: list[str], cwd: Path) -> str:
 
 
 def assert_is_jblog_repo(jblog_root: Path) -> None:
-    if not (jblog_root / ".git").exists():
-        raise RepoSanityError(f"{jblog_root} 는 git 리포가 아님")
-    top = _run(["git", "rev-parse", "--show-toplevel"], cwd=jblog_root)
+    """하위 호환 — 'J-Blog' 만 통과."""
+    assert_is_repo(jblog_root, expected_name="J-Blog")
+
+
+def assert_is_repo(repo_root: Path, *, expected_name: str) -> None:
+    """리포 sanity 가드 — 디렉토리 이름이 expected_name 과 일치하는지."""
+    if not (repo_root / ".git").exists():
+        raise RepoSanityError(f"{repo_root} 는 git 리포가 아님")
+    top = _run(["git", "rev-parse", "--show-toplevel"], cwd=repo_root)
     top_name = Path(top).name
-    if top_name.lower() != "j-blog":
+    if top_name.lower() != expected_name.lower():
         raise RepoSanityError(
-            f"리포 sanity 실패: 예상 'J-Blog', 실제 '{top_name}' (path={top})"
+            f"리포 sanity 실패: 예상 '{expected_name}', 실제 '{top_name}' (path={top})"
         )
 
 
@@ -71,12 +77,15 @@ def publish_files(
     files: list[Path],
     commit_message: str,
     do_push: bool = True,
+    *,
+    expected_repo_name: str = "J-Blog",
 ) -> tuple[str | None, bool]:
     """리포 sanity → stage → commit → push. (commit_sha, pushed) 반환.
 
     stage 대상에 변화가 없으면 (None, False) 반환.
+    expected_repo_name: BlogProfile.repo_name (J-Blog / J-Blog-AI 등).
     """
-    assert_is_jblog_repo(jblog_root)
+    assert_is_repo(jblog_root, expected_name=expected_repo_name)
     stage_paths(jblog_root, files)
 
     status = _run(["git", "status", "--porcelain"], cwd=jblog_root)

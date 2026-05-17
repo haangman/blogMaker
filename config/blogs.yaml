@@ -1,0 +1,30 @@
+# 멀티 블로그 정의. 한 사이클이 enabled=true 블로그를 순차 처리.
+
+blogs:
+  - id: trends
+    enabled: true
+    name: "trend log"
+    repo_path: "../J-Blog"
+    repo_name: "J-Blog"
+    baseurl: "/J-Blog"
+    sources_file: "sources.yaml"
+    categories_file: "categories.yaml"
+    persona_files: ["persona.generated.md", "persona.md"]
+    selector_profile: "lifestyle"
+    articles_per_cycle: 5
+    backlog_file: null
+    backlog_ratio: 0.0
+
+  - id: ai
+    enabled: true
+    name: "AI tech notes"
+    repo_path: "../J-Blog-AI"
+    repo_name: "J-Blog-AI"
+    baseurl: "/J-Blog-AI"
+    sources_file: "sources.ai.yaml"
+    categories_file: "categories.ai.yaml"
+    persona_files: ["persona.ai.generated.md", "persona.ai.md"]
+    selector_profile: "ai"
+    articles_per_cycle: 5
+    backlog_file: "ai_backlog.yaml"
+    backlog_ratio: 0.4   # 5편 중 ~2편을 백로그에서

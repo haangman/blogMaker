@@ -153,11 +153,16 @@ def dry_run(
 
 
 @app.command()
-def run() -> None:
+def run(
+    blog: list[str] = typer.Option(
+        None, "--blog", "-b",
+        help="특정 블로그만 실행 (예: --blog ai). 여러 번 가능. 기본은 enabled 전체.",
+    ),
+) -> None:
     """메인 사이클 1회 실행 (Task Scheduler 가 호출하는 것과 동일)."""
     from src.main import run_cycle
 
-    rc = run_cycle()
+    rc = run_cycle(blog_ids=list(blog) if blog else None)
     raise typer.Exit(code=rc)
 
 

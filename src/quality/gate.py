@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from src.config_loader import load_quality_rules
@@ -11,6 +12,13 @@ from src.quality.persona_check import detect_persona_violations
 from src.quality.stats import count_body_image_markers, detect_stats_issues
 
 log = get_logger("quality.gate")
+
+# ```lang ... ``` 코드 펜스 — 정형구/통계 검사 시 본문에서 제거 (mermaid·python 등 자연어 아님)
+_CODE_FENCE = re.compile(r"```[a-zA-Z0-9_-]*\n.*?\n```", re.DOTALL)
+
+
+def _strip_code_fences(body: str) -> str:
+    return _CODE_FENCE.sub("", body)
 
 
 @dataclass
@@ -22,10 +30,13 @@ class GateResult:
 
 
 def evaluate(body: str) -> GateResult:
+    # 코드 펜스(mermaid/python 등) 는 자연어 검사 대상이 아님 — 제거 후 검사
+    natural = _strip_code_fences(body).strip()
+
     failures: list[str] = []
-    failures.extend(detect_ai_smell(body))
-    failures.extend(detect_stats_issues(body))
-    failures.extend(detect_persona_violations(body))
+    failures.extend(detect_ai_smell(natural))
+    failures.extend(detect_stats_issues(natural))
+    failures.extend(detect_persona_violations(natural))
 
     # 이미지 마커 경고 (차단 X — INFO 로그만 + warnings 리스트)
     warnings: list[str] = []
