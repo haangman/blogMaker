@@ -98,7 +98,7 @@ blogMaker/
 - [x] 정적 사이트 생성기 선택 → **Jekyll**
 - [x] Jekyll 기본 구조 생성 (`_config.yml`, `Gemfile`, `index.md`, `_posts/`)
 - [x] 페르소나 초안 작성 (`config/persona.md`) — 사용자 검토/수정 필요
-- [ ] GitHub Pages 활성화 (Settings → Pages → main 브랜치)
+- [x] GitHub Pages 활성화 → https://haangman.github.io/blogMaker/
 - [ ] 트렌드 수집기 구현
 - [ ] 글 생성기 구현 (자연스러움 가이드 반영)
 - [ ] 자동 commit & push 파이프라인
