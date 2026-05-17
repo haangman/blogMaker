@@ -1,4 +1,8 @@
-"""클러스터별 사건 통합 요약 + 카테고리 분류 + simhash 산출."""
+"""클러스터링 + (선정 이후) 사건 통합 요약 + 카테고리 분류.
+
+비용 보호 — cluster_only 단계에서는 LLM 을 한 번도 부르지 않는다.
+selector 가 후보 1개를 고른 다음, enrich_with_llm 으로 그 1개만 LLM 처리한다.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +15,6 @@ from src.categorize.classify import classify_category
 from src.cluster.embed import embed
 from src.cluster.hdbscan_cluster import cluster_items
 from src.cluster.simhash import simhash64
-from src.config_loader import get_settings
 from src.llm import ClaudeCLIError, ask
 from src.logging_setup import get_logger
 from src.normalize.item import NormalizedItem
@@ -24,9 +27,10 @@ class TopicCluster:
     items: list[NormalizedItem]
     event_title: str
     event_summary: str
-    category: str           # categories.yaml 의 id
+    category: str           # categories.yaml 의 id. enrich 전에는 'other' 기본.
     simhash: int
     embedding: np.ndarray | None = None
+    enriched: bool = False
     score_extra: dict = field(default_factory=dict)
 
     @property
@@ -37,6 +41,58 @@ class TopicCluster:
     def latest_published(self) -> datetime | None:
         ts = [it.published_at for it in self.items if it.published_at]
         return max(ts) if ts else None
+
+
+def _provisional_title(items: list[NormalizedItem]) -> str:
+    """가장 본문이 풍부한 항목의 제목을 임시 대표 제목으로."""
+    if not items:
+        return ""
+    best = max(items, key=lambda it: len(it.body) + len(it.title))
+    return best.title[:80]
+
+
+def _provisional_summary(items: list[NormalizedItem]) -> str:
+    if not items:
+        return ""
+    parts: list[str] = []
+    for it in items[:3]:
+        if it.body:
+            parts.append(it.body[:240])
+        elif it.title:
+            parts.append(it.title)
+    return " / ".join(parts)[:600]
+
+
+def cluster_only(items: list[NormalizedItem]) -> list[TopicCluster]:
+    """LLM 없이 클러스터링 + 가벼운 메타만 채워서 후보 반환."""
+    groups = cluster_items(items)
+    log.info("cluster.groups", n=len(groups))
+    if not groups:
+        return []
+
+    # 임베딩: 그룹 대표 텍스트
+    rep_texts = [
+        " ".join([(g[0].title or ""), ((g[0].body or "")[:200])]).strip() or "untitled"
+        for g in groups
+    ]
+    vecs = embed(rep_texts) if rep_texts else np.zeros((0, 384), dtype=np.float32)
+
+    clusters: list[TopicCluster] = []
+    for idx, grp in enumerate(groups):
+        title = _provisional_title(grp)
+        summary = _provisional_summary(grp)
+        clusters.append(
+            TopicCluster(
+                items=grp,
+                event_title=title,
+                event_summary=summary,
+                category="other",                # enrich 전 기본
+                simhash=simhash64(title + " " + summary),
+                embedding=vecs[idx] if vecs.shape[0] else None,
+                enriched=False,
+            )
+        )
+    return clusters
 
 
 _MERGE_SYSTEM = (
@@ -59,7 +115,6 @@ def _merge_with_llm(items: list[NormalizedItem]) -> tuple[str, str]:
         resp = ask(user, system_prompt=_MERGE_SYSTEM, model="sonnet", purpose="cluster_merge")
     except ClaudeCLIError as e:
         log.warning("cluster.merge_llm_failed", error=str(e))
-        # 폴백: 대표 항목 1개의 제목/리드
         rep = items[0]
         return rep.title[:60], (rep.body or rep.title)[:300]
 
@@ -76,33 +131,16 @@ def _merge_with_llm(items: list[NormalizedItem]) -> tuple[str, str]:
     return title, summary
 
 
-def cluster_and_merge(items: list[NormalizedItem]) -> list[TopicCluster]:
-    """전체 normalize 결과를 클러스터링하고 각 클러스터의 사건 요약/카테고리/simhash 계산."""
-    groups = cluster_items(items)
-    log.info("cluster.groups", n=len(groups))
-    if not groups:
-        return []
-
-    # 요약 텍스트만 모아 벡터 계산을 한 번에
-    titles_and_summaries: list[tuple[list[NormalizedItem], str, str]] = []
-    for grp in groups:
-        title, summary = _merge_with_llm(grp)
-        titles_and_summaries.append((grp, title, summary))
-
-    summaries = [s for (_, _, s) in titles_and_summaries]
-    vecs = embed(summaries) if summaries else np.zeros((0, 384), dtype=np.float32)
-
-    clusters: list[TopicCluster] = []
-    for idx, (grp, title, summary) in enumerate(titles_and_summaries):
-        cat = classify_category(title, summary)
-        clusters.append(
-            TopicCluster(
-                items=grp,
-                event_title=title,
-                event_summary=summary,
-                category=cat,
-                simhash=simhash64(summary),
-                embedding=vecs[idx] if vecs.shape[0] else None,
-            )
-        )
-    return clusters
+def enrich_with_llm(cluster: TopicCluster) -> TopicCluster:
+    """선정된 클러스터 1개를 LLM 으로 통합 요약 + 카테고리 분류 + simhash 재계산."""
+    if cluster.enriched:
+        return cluster
+    title, summary = _merge_with_llm(cluster.items)
+    cat = classify_category(title, summary)
+    cluster.event_title = title
+    cluster.event_summary = summary
+    cluster.category = cat
+    cluster.simhash = simhash64(title + " " + summary)
+    cluster.enriched = True
+    log.info("cluster.enriched", title=title, category=cat, simhash=cluster.simhash)
+    return cluster

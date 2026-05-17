@@ -62,7 +62,9 @@ def render_post(draft: ArticleDraft, slug: str, image_relpath: str | None) -> st
 
     if draft.sources:
         parts.append("")
-        parts.append("---")
+        # `---` 대신 `***` — 본문에 들어간 단독 `---` 는 sanitize 가 잡는데
+        # 그게 우리가 의도해서 넣은 sources 구분자까지 함께 잡아버리는 사고를 막기 위함.
+        parts.append("***")
         parts.append("")
         parts.append("**참고**")
         parts.append("")

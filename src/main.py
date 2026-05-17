@@ -10,10 +10,11 @@ from __future__ import annotations
 import json
 import sys
 
-from src.cluster.merge import cluster_and_merge
+from src.cluster.merge import cluster_only, enrich_with_llm
 from src.collectors.registry import load_active_collectors
 from src.config_loader import DATA_DIR, get_settings
 from src.images import attach_image
+from src.llm import CycleQuotaExceeded, get_cycle_call_count, reset_cycle_counter
 from src.logging_setup import get_logger, setup_logging
 from src.normalize import normalize_batch
 from src.publisher import publish
@@ -56,6 +57,7 @@ def run_cycle() -> int:
         with cycle_lock():
             log.info("cycle.start", dry_run=settings.dry_run, ts=iso_now())
             migrate()
+            reset_cycle_counter()
 
             # phase 1: collect
             collectors = load_active_collectors()
@@ -84,19 +86,26 @@ def run_cycle() -> int:
             log.info("cycle.normalized", n=len(items))
             _save_trends_dump(items)
 
-            # phase 3+4: cluster + merge + categorize
-            clusters = cluster_and_merge(items)
+            # phase 3: cluster (LLM 없이 임베딩+HDBSCAN+가벼운 메타)
+            clusters = cluster_only(items)
             log.info("cycle.clusters", n=len(clusters))
             if not clusters:
                 log.info("cycle.no_clusters")
                 return 0
 
-            # phase 5: select
+            # phase 5: select 1 candidate (점수만으로)
             selected = pick_topic(clusters)
             if not selected:
                 log.info("cycle.nothing_to_publish")
                 return 0
-            log.info("cycle.selected", title=selected.event_title, category=selected.category)
+            log.info("cycle.selected_candidate",
+                     title=selected.event_title, sources=selected.source_diversity,
+                     size=len(selected.items))
+
+            # phase 3+4: 선정된 클러스터 1개만 LLM 으로 통합 요약 + 카테고리 분류
+            selected = enrich_with_llm(selected)
+            log.info("cycle.enriched",
+                     title=selected.event_title, category=selected.category)
 
             # follow-up 모드 — 8~30일 내 비슷한 사건 있으면 컨텍스트 첨부
             followup = find_followup(selected)
@@ -132,13 +141,16 @@ def run_cycle() -> int:
                         if selected.embedding is not None else None,
                 )
 
-            log.info("cycle.end", status="ok")
+            log.info("cycle.end", status="ok", llm_calls=get_cycle_call_count())
             return 0
     except LockBusy as e:
         log.warning("cycle.lock_busy", reason=str(e))
         return 0
+    except CycleQuotaExceeded as e:
+        log.error("cycle.quota_exceeded", reason=str(e), llm_calls=get_cycle_call_count())
+        return 0
     except Exception:
-        log.exception("cycle.unhandled_error")
+        log.exception("cycle.unhandled_error", llm_calls=get_cycle_call_count())
         return 1
 
 

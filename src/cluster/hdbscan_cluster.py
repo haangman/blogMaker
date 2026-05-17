@@ -58,21 +58,18 @@ def cluster_items(items: list[NormalizedItem]) -> list[list[NormalizedItem]]:
         try:
             import hdbscan
             labels = list(
-                hdbscan.HDBSCAN(min_cluster_size=2, min_samples=1, metric="euclidean")
+                hdbscan.HDBSCAN(min_cluster_size=3, min_samples=2, metric="euclidean")
                 .fit_predict(vecs)
             )
         except Exception as e:
             log.warning("cluster.hdbscan_failed_fallback", error=str(e))
             labels = _union_find_cluster(vecs)
 
-    # label == -1 (HDBSCAN noise) 도 단일 토픽으로 보존
+    # 노이즈(-1) 는 버려 — 단일 항목 클러스터는 신호 약함
     grouped: dict[int, list[NormalizedItem]] = {}
     for it, lbl in zip(items, labels, strict=True):
         if lbl == -1:
-            # 각 노이즈를 별도 클러스터로
-            key = 10_000 + id(it)
-        else:
-            key = int(lbl)
-        grouped.setdefault(key, []).append(it)
+            continue
+        grouped.setdefault(int(lbl), []).append(it)
 
     return list(grouped.values())

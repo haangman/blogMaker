@@ -31,6 +31,23 @@ class ClaudeCLIError(RuntimeError):
     pass
 
 
+class CycleQuotaExceeded(ClaudeCLIError):
+    """한 사이클의 LLM 호출 횟수 상한을 초과 — 폭주 보호."""
+
+
+# 사이클 시작 시 reset_cycle_counter() 로 0 으로 초기화.
+_cycle_call_count = 0
+
+
+def reset_cycle_counter() -> None:
+    global _cycle_call_count
+    _cycle_call_count = 0
+
+
+def get_cycle_call_count() -> int:
+    return _cycle_call_count
+
+
 @dataclass
 class ClaudeResponse:
     text: str
@@ -159,9 +176,20 @@ def ask(
 
     - user_prompt 는 stdin 으로 전달 (인자 길이 한계 회피)
     - system_prompt 가 길면 임시 파일로 옮겨서 --append-system-prompt 의 인자 한계 회피
+    - 사이클당 호출 횟수가 settings.max_llm_calls_per_cycle 을 넘으면 CycleQuotaExceeded.
     """
+    global _cycle_call_count
     settings = get_settings()
     timeout_s = timeout_s or settings.claude_cli_timeout_sec
+
+    limit = settings.max_llm_calls_per_cycle
+    if limit and _cycle_call_count >= limit:
+        log.error("llm.cycle_quota_exceeded", count=_cycle_call_count, limit=limit, purpose=purpose)
+        raise CycleQuotaExceeded(
+            f"한 사이클 LLM 호출 상한 초과 ({_cycle_call_count}/{limit}). "
+            f"의도치 않은 폭주로 의심됨 — 사이클을 중단합니다."
+        )
+    _cycle_call_count += 1
 
     tmp_system: Path | None = None
     try:

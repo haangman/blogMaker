@@ -174,6 +174,21 @@ pwsh -ExecutionPolicy Bypass -File .\scripts\setup_task.ps1 -Remove     # 작업
 ```
 사용자 로그온 시 실행 — Claude Code CLI 세션이 사용자 컨텍스트에 묶이므로 다른 옵션 불가.
 
+### 운영 메모 — 사이클 강제 종료
+사이클을 도중에 멈춰야 한다면 **lock 파일을 먼저 지우지 말 것**. 잠금 가드는 PID 살아있는지 확인하는데, lock 만 먼저 지우면 살아있는 python 이 새 사이클과 동시에 돌면서 LLM 호출이 폭주할 수 있다 (구독 quota 빠르게 소진). 안전 순서:
+
+```powershell
+# 1) 실제로 도는 python 프로세스를 먼저 잡는다
+Get-Process python -ErrorAction SilentlyContinue |
+  Where-Object { $_.Path -like '*blogMaker*' } |
+  Stop-Process -Force
+
+# 2) 그 후 lock 파일 정리 (보통 자동으로 사라지지만 안 사라지면 수동)
+Remove-Item C:\Users\김은희\Downloads\blogMaker\data\.cycle.lock -ErrorAction SilentlyContinue
+```
+
+추가 보호: `.env` 의 `MAX_LLM_CALLS_PER_CYCLE` (기본 80) 으로 한 사이클 내 LLM 호출 횟수가 상한 초과 시 자동 abort.
+
 ### 의존성 설치 (사용자가 실행)
 ```powershell
 cd C:\Users\김은희\Downloads\blogMaker

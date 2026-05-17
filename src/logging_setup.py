@@ -12,7 +12,11 @@ import structlog
 
 from src.config_loader import LOG_DIR, get_settings
 
-_SECRET_KEY_PATTERN = re.compile(r".*(?:_KEY|_TOKEN|_SECRET|PASSWORD|PAT).*", re.IGNORECASE)
+# 키 이름 매칭 — '_PATH' 같은 무관한 변수가 가려지는 사고 방지를 위해 단어 경계 사용
+_SECRET_KEY_PATTERN = re.compile(
+    r"(?:^|_)(?:KEY|TOKEN|SECRET|PASSWORD|PAT)(?:$|_)",
+    re.IGNORECASE,
+)
 _SECRET_VALUE_PATTERN = re.compile(r"(sk-[A-Za-z0-9_\-]{8,}|gho_[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,})")
 
 

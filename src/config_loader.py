@@ -41,6 +41,9 @@ class Settings(BaseSettings):
 
     claude_cli_path: str = "claude"
     claude_cli_timeout_sec: int = 180
+    # 한 사이클 내 LLM 호출 횟수 상한 — 의도치 않은 폭주(예: 클러스터 폭증) 보호.
+    # 구독 quota 보호용. 비용($) 가드 아님.
+    max_llm_calls_per_cycle: int = 80
 
     def jblog_abs_path(self) -> Path:
         p = Path(self.jblog_path)
