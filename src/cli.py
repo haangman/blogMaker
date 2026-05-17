@@ -3,7 +3,7 @@
 서브커맨드 (점진 추가):
   health       — Claude CLI 인증/연결 헬스체크, .env 검증
   init         — DB 마이그레이션 + 디렉토리 생성
-  dry-run      — Step 2 publisher가 추가됨에 따라 가짜 글 1편 발행
+  dry-run      — placeholder 글 1편을 J-Blog 에 자동 발행 (Step 2)
   run          — 메인 사이클 (Step 4 이후)
   analyze-persona — Step 6
 """
@@ -17,6 +17,7 @@ import typer
 
 from src.config_loader import REPO_ROOT, get_settings
 from src.logging_setup import get_logger, setup_logging
+from src.publisher import ArticleDraft, SourceRef, publish
 from src.state.db import DB_PATH, migrate
 
 app = typer.Typer(add_completion=False, help="blogMaker — 트렌드 기반 자동 블로그")
@@ -71,6 +72,77 @@ def init() -> None:
     migrate()
     log.info("db.migrated", path=str(DB_PATH))
     typer.secho(f"[OK]  DB 마이그레이션 완료: {DB_PATH}", fg="green")
+
+
+_PLACEHOLDER_BODY = """\
+처음으로 글을 자동으로 올려본다. 아직 본문은 사람이 쓴 흉내만 낸 것이고,
+글을 진짜로 만들어주는 부분은 다음 단계에서 붙는다.
+
+사실은 이 글의 목적은 글이 잘 읽히는지가 아니라, **글이 잘 올라가는지** 다.
+파일이 J-Blog 리포의 `_posts/` 에 정확한 형식으로 들어가고, 자동 commit 후
+push 까지 한 번에 흘러가서, 1~2분 뒤 GitHub Pages 에 노출되는지를 본다.
+
+근데 한 가지는 짚어두고 싶다. 이 자리에는 곧 진짜 글이 들어온다. 그땐
+"오늘은 ~에 대해 알아보겠습니다" 같은 정형 문구 없이, 어디서 본 토픽이
+사실은 다른 어떤 흐름과 이어져 있는지에 대한 짧은 관찰이 자리할 거다.
+
+이 글은 발행 파이프라인이 잘 돌아가는지 확인하고 나면 지워도 된다.
+"""
+
+
+@app.command("dry-run")
+def dry_run(
+    title: str = typer.Option(
+        "scaffold 검증용 더미 글",
+        "--title",
+        "-t",
+        help="발행할 글 제목.",
+    ),
+    category: str = typer.Option(
+        "tech",
+        "--category",
+        "-c",
+        help="카테고리 id (categories.yaml 의 id 중 하나).",
+    ),
+    push: bool = typer.Option(
+        True,
+        "--push/--no-push",
+        help="J-Blog 로 push 여부. --no-push 면 로컬에 파일만 작성.",
+    ),
+) -> None:
+    """가짜 글 1편을 만들어 J-Blog 에 발행. 두 리포 자동화 흐름 검증용."""
+    setup_logging()
+    log = get_logger("cli.dry_run")
+
+    settings = get_settings()
+    log.info("dry_run.start",
+             jblog=str(settings.jblog_abs_path()),
+             push=push,
+             dry_run_env=settings.dry_run)
+
+    draft = ArticleDraft(
+        title=title,
+        body_markdown=_PLACEHOLDER_BODY,
+        category=category,
+        summary="scaffold 단계 검증용. 본문은 자동 생성기가 붙는 다음 단계에서 교체된다.",
+        tags=["scaffold", "test"],
+        sources=[
+            SourceRef(
+                url="https://github.com/haangman/blogMaker",
+                title="blogMaker 리포지토리",
+            ),
+        ],
+    )
+
+    info = publish(draft, do_push=push)
+    typer.secho(f"[OK]  글 작성: {info.post_path}", fg="green")
+    if info.commit_sha:
+        typer.secho(f"[OK]  commit: {info.commit_sha}", fg="green")
+    if info.pushed:
+        typer.secho("[OK]  push 완료 — GitHub Pages 빌드 후 1~2분 내 노출", fg="green")
+        typer.echo("       https://haangman.github.io/J-Blog/")
+    else:
+        typer.secho("[--]  push 스킵 (로컬 파일만 작성)", fg="yellow")
 
 
 def main() -> None:
