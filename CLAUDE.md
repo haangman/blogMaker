@@ -27,10 +27,11 @@ AI 글의 흔한 티를 의도적으로 피한다:
 - **페르소나 일관성**: `config/persona.md`에 정의된 1인칭 화자(나이대, 직업, 말투, 자주 쓰는 표현, 싫어하는 표현)에 맞춰서 작성
 
 ### 3. GitHub Pages 블로그
-- 정적 사이트 생성기: Jekyll 또는 Hugo 중 택1 (확정 시 이 문서 업데이트)
+- 정적 사이트 생성기: **Jekyll** (GitHub Pages 네이티브 지원 → 별도 빌드 액션 없이 자동 배포)
 - 글 파일은 마크다운 + Front Matter (title, date, tags, summary)
-- `_posts/YYYY-MM-DD-slug.md` 형식 (Jekyll 기준)
+- `_posts/YYYY-MM-DD-slug.md` 형식
 - 이미지/썸네일은 `assets/img/` 하위로
+- 테마는 `jekyll-remote-theme` 또는 minima 기반으로 시작 (확정 시 갱신)
 
 ### 4. 자동 commit & push
 - **파일이 추가·수정될 때마다 자동으로 stage → commit → push**
@@ -84,15 +85,19 @@ blogMaker/
 │   └── main.py (또는 .ts)    # 엔트리포인트
 ├── data/
 │   └── trends/               # 일자별 수집 결과
-├── _posts/                   # Jekyll 글 (또는 Hugo의 content/posts)
+├── _posts/                   # Jekyll 글 (YYYY-MM-DD-slug.md)
 ├── assets/img/
-└── _config.yml (또는 hugo.toml)
+├── _config.yml               # Jekyll 설정
+├── Gemfile                   # github-pages gem
+└── index.md                  # 블로그 홈
 ```
 
 ## 진행 상태
 
 - [x] git init 및 GitHub 리포 연결
-- [ ] 정적 사이트 생성기 선택 (Jekyll vs Hugo)
+- [x] 정적 사이트 생성기 선택 → **Jekyll**
+- [ ] Jekyll 기본 구조 생성 (`_config.yml`, `Gemfile`, `index.md`, `_posts/`)
+- [ ] GitHub Pages 활성화 (Settings → Pages → main 브랜치)
 - [ ] 페르소나 정의 (`config/persona.md`)
 - [ ] 트렌드 수집기 구현
 - [ ] 글 생성기 구현 (자연스러움 가이드 반영)
