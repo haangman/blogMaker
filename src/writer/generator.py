@@ -18,12 +18,29 @@ from src.writer.prompts import build_system_prompt, build_user_prompt
 log = get_logger("writer")
 
 
+_SUSPICIOUS_TITLE_HINTS = (
+    "본문", "작성합니다", "작성", "여기", "다음과", "아래", "시작합니다",
+)
+
+
 def _title_for_article(cluster: TopicCluster, body: str) -> str:
-    """글의 본문 첫 줄/사건 제목으로 글 제목 결정. 사용자가 보기 어색하지 않게."""
-    first_line = next((ln for ln in body.splitlines() if ln.strip()), "")
-    if 0 < len(first_line) <= 80 and not first_line.startswith("#"):
-        return first_line.strip().rstrip(".")
-    return cluster.event_title
+    """글의 본문 첫 줄/사건 제목으로 글 제목 결정.
+
+    첫 줄이 메타 라벨로 의심되면 cluster.event_title 로 폴백.
+    """
+    first_line = next((ln.strip() for ln in body.splitlines() if ln.strip()), "")
+    if not first_line:
+        return cluster.event_title
+    if first_line.startswith(("#", ">", "*", "-", "[", "!")):
+        return cluster.event_title
+    if any(hint in first_line for hint in _SUSPICIOUS_TITLE_HINTS) and len(first_line) <= 30:
+        return cluster.event_title
+    if not 6 <= len(first_line) <= 80:
+        return cluster.event_title
+    # 첫 줄이 문장처럼 길고 끝에 마침표 — 본문 첫 문장일 가능성 높음
+    if len(first_line) >= 35 and first_line.endswith(("다.", "다", ".", "?", "다더라")):
+        return cluster.event_title
+    return first_line.rstrip(".")
 
 
 def write_article(

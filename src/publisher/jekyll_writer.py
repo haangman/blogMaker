@@ -1,16 +1,36 @@
-"""J-Blog 리포 안에 `_posts/YYYY-MM-DD-slug.md` 파일 작성."""
+"""J-Blog 리포 안에 `_posts/YYYY-MM-DD-slug.md` 파일 작성.
+
+본문에는 writer 가 삽입한 `[IMAGE: "..."]` 마커가 들어있고,
+이 모듈이 마커를 실제 마크다운 이미지 + 크레딧으로 치환한다.
+매칭 안 된 마커는 조용히 제거.
+"""
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from slugify import slugify
 
 from src.config_loader import load_categories
 from src.publisher.frontmatter import build_markdown
-from src.publisher.models import ArticleDraft
+from src.publisher.models import ArticleDraft, ImageRef
 from src.utils.hashing import short_hash
 from src.utils.timeutil import iso_now, now_seoul, today_slug_date
+
+# `[IMAGE: "..."]` 마커 — src.images.markers 와 동일 패턴 (순환 import 회피용 사본)
+_MARKER_RE = re.compile(r'\[IMAGE:\s*"([^"]+)"\s*\]')
+_LONE_MARKER_LINE_RE = re.compile(
+    r'^[ \t]*' + _MARKER_RE.pattern + r'[ \t]*\r?\n+',
+    flags=re.MULTILINE,
+)
+
+
+def _strip_unmatched_markers(body: str) -> str:
+    """매칭되지 않은 마커를 본문에서 조용히 제거."""
+    body = _LONE_MARKER_LINE_RE.sub("", body)
+    body = _MARKER_RE.sub("", body)
+    return body
 
 
 def _category_label_ko(category_id: str) -> str:
@@ -47,23 +67,64 @@ def build_frontmatter(draft: ArticleDraft, slug: str) -> dict:
     return meta
 
 
-def render_post(draft: ArticleDraft, slug: str, image_relpath: str | None) -> str:
-    """이미지 경로(J-Blog 기준 상대경로)를 받아 본문 상단에 삽입한 마크다운을 반환."""
+def _image_markdown(image: ImageRef, relpath: str) -> str:
+    alt = image.alt or "image"
+    lines = [f'![{alt}]({{{{ site.baseurl }}}}/{relpath.lstrip("/")})']
+    if image.credit:
+        if image.credit_url:
+            lines.append(f"*[{image.credit}]({image.credit_url})*")
+        else:
+            lines.append(f"*{image.credit}*")
+    return "\n".join(lines)
+
+
+def _replace_body_markers(body: str, marker_to_relpath: dict[str, tuple[ImageRef, str]]) -> str:
+    """본문 마커를 ImageRef + 상대경로로 치환. 매칭 안 된 마커는 제거."""
+
+    def repl(m):
+        kw = m.group(1).strip().lower()
+        pair = marker_to_relpath.get(kw)
+        if not pair:
+            return ""  # 매칭 안 됨 — 조용히 제거
+        image, relpath = pair
+        return "\n\n" + _image_markdown(image, relpath) + "\n\n"
+
+    replaced = _MARKER_RE.sub(repl, body)
+    return _strip_unmatched_markers(replaced)
+
+
+def render_post(
+    draft: ArticleDraft,
+    slug: str,
+    *,
+    header_relpath: str | None = None,
+    body_marker_paths: dict[str, tuple[ImageRef, str]] | None = None,
+) -> str:
+    """글 1편의 최종 마크다운 (frontmatter + 본문) 반환.
+
+    - header_relpath: 본문 상단에 삽입할 헤더 이미지의 baseurl 기준 상대경로
+    - body_marker_paths: 키워드(소문자) → (ImageRef, 상대경로) 매핑
+    """
     parts: list[str] = []
 
-    if image_relpath:
-        alt = draft.image_alt or draft.title
-        parts.append(f'![{alt}]({{{{ site.baseurl }}}}/{image_relpath.lstrip("/")})')
-        if draft.image_credit:
-            parts.append(f"*{draft.image_credit}*")
+    # 1) 헤더 이미지
+    header = next((im for im in draft.images if im.marker_keyword is None), None)
+    if header and header_relpath:
+        parts.append(_image_markdown(header, header_relpath))
         parts.append("")
 
-    parts.append(draft.body_markdown.rstrip())
+    # 2) 본문 — 마커 치환 후
+    body = draft.body_markdown.rstrip()
+    if body_marker_paths:
+        body = _replace_body_markers(body, body_marker_paths)
+    else:
+        # 헤더만 있고 본문 마커 처리가 없는 경우라도 잔여 마커는 제거
+        body = _strip_unmatched_markers(body)
+    parts.append(body)
 
+    # 3) sources 섹션
     if draft.sources:
         parts.append("")
-        # `---` 대신 `***` — 본문에 들어간 단독 `---` 는 sanitize 가 잡는데
-        # 그게 우리가 의도해서 넣은 sources 구분자까지 함께 잡아버리는 사고를 막기 위함.
         parts.append("***")
         parts.append("")
         parts.append("**참고**")
@@ -72,18 +133,5 @@ def render_post(draft: ArticleDraft, slug: str, image_relpath: str | None) -> st
             label = s.title or s.url
             parts.append(f"- [{label}]({s.url})")
 
-    body = "\n".join(parts)
-    return build_markdown(build_frontmatter(draft, slug), body)
-
-
-def write_post(jblog_root: Path, draft: ArticleDraft, image_relpath: str | None = None) -> Path:
-    """글을 디스크에 쓰고 절대경로 반환. 디렉토리 보장."""
-    slug = build_slug(draft.title, draft.body_markdown, when=now_seoul().isoformat())
-    fname = build_post_filename(slug)
-    posts_dir = jblog_root / "_posts"
-    posts_dir.mkdir(parents=True, exist_ok=True)
-    post_path = posts_dir / fname
-
-    content = render_post(draft, slug, image_relpath)
-    post_path.write_text(content, encoding="utf-8")
-    return post_path
+    full = "\n".join(parts)
+    return build_markdown(build_frontmatter(draft, slug), full)

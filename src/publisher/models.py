@@ -1,4 +1,4 @@
-"""publisher 입출력 데이터 모델. 글 본문 + 메타 + 출처."""
+"""publisher 입출력 데이터 모델."""
 
 from __future__ import annotations
 
@@ -13,6 +13,21 @@ class SourceRef:
 
 
 @dataclass
+class ImageRef:
+    """1편의 글에 첨부되는 이미지 한 장.
+
+    marker_keyword=None  → 헤더 이미지 (본문 상단에 자동 삽입)
+    marker_keyword='...' → 본문 내 `[IMAGE: "..."]` 마커 자리로 치환
+    """
+
+    local_path: Path
+    alt: str
+    credit: str = ""
+    credit_url: str = ""
+    marker_keyword: str | None = None
+
+
+@dataclass
 class ArticleDraft:
     title: str
     body_markdown: str
@@ -20,11 +35,9 @@ class ArticleDraft:
     summary: str = ""
     tags: list[str] = field(default_factory=list)
     sources: list[SourceRef] = field(default_factory=list)
-    image_local_path: Path | None = None   # 로컬에 받아둔 이미지. publisher가 J-Blog 로 복사.
-    image_alt: str = ""
-    image_credit: str = ""                 # "Photo by X on Unsplash" 같은 출처
-    cluster_simhash: int | None = None     # Step 5에서 채워진다. None 이면 글 해시로 폴백.
-    updates_url: str | None = None         # follow-up 글일 때 이전 글의 permalink (예: /2026/05/10/slug/)
+    images: list[ImageRef] = field(default_factory=list)
+    cluster_simhash: int | None = None
+    updates_url: str | None = None
 
 
 @dataclass

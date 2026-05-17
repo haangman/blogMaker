@@ -13,7 +13,7 @@ import sys
 from src.cluster.merge import cluster_only, enrich_with_llm
 from src.collectors.registry import load_active_collectors
 from src.config_loader import DATA_DIR, get_settings
-from src.images import attach_image
+from src.images import attach_images
 from src.llm import CycleQuotaExceeded, get_cycle_call_count, reset_cycle_counter
 from src.logging_setup import get_logger, setup_logging
 from src.normalize import normalize_batch
@@ -122,8 +122,8 @@ def run_cycle() -> int:
             if followup and followup.previous_url:
                 article.updates_url = followup.previous_url
 
-            # phase 7: image
-            attach_image(article, selected)
+            # phase 7: images — 헤더 1장 + 본문 마커 0~3장
+            attach_images(article, selected)
 
             # phase 9: publish
             info = publish(article)

@@ -102,3 +102,11 @@ def must_contain_any_check(body: str) -> list[str]:
     if any(token in body for token in pool):
         return []
     return [f"persona:missing_signature_phrase (need any of {pool})"]
+
+
+# `[IMAGE: "..."]` 마커 — quality 모듈에서 가볍게 카운팅용
+_BODY_IMAGE_MARKER = re.compile(r'\[IMAGE:\s*"[^"]+"\s*\]')
+
+
+def count_body_image_markers(body: str) -> int:
+    return len(_BODY_IMAGE_MARKER.findall(body))

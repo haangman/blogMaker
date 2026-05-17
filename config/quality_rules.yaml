@@ -22,7 +22,7 @@ person:
 # 게이트 통계 임계치 (초기값 — 운영하면서 튜닝)
 stats:
   paragraph_len_cv_min: 0.35        # std/mean. 균일하면 차단
-  paragraph_len_cv_exempt_below: 350   # 글 자체가 짧으면 면제 (자수)
+  paragraph_len_cv_exempt_below: 500   # 글 자체가 짧으면 면제 (자수). V2 에서 500 으로 상향
   token_ratio_block: 0.030          # 한 토큰이 본문의 3% 초과 시 차단
   token_ratio_warn: 0.015
   first_last_paragraph_jaccard_max: 0.30
@@ -30,7 +30,11 @@ stats:
 
 length:
   min_chars: 300
-  max_chars: 2200
+  max_chars: 3000                   # V2 에서 2200 → 3000 (상세도 ↑)
+
+# 본문 안 이미지 마커 (선택 — 현재는 INFO 로그만, 차단 X)
+images:
+  min_in_body_when_long: 1          # 1500자 이상인데 본문 마커 0개면 경고만
 
 # 페르소나의 "자주 쓰는 표현" — 최소 1개가 자연 등장해야 통과
 must_contain_any: ['사실은', '근데', '솔직히', '재밌는 건', '이게 좀']
