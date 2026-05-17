@@ -32,4 +32,13 @@ def simhash64(text: str) -> int:
 
 
 def hamming(a: int, b: int) -> int:
-    return bin(a ^ b).count("1")
+    # 64bit 마스크 — signed/unsigned 변환 후에도 동일 비트 거리 보장
+    return bin((a ^ b) & 0xFFFFFFFFFFFFFFFF).count("1")
+
+
+def to_signed64(n: int) -> int:
+    """SQLite INTEGER (signed 64bit) 저장용으로 unsigned 64bit 값을 변환."""
+    if n is None:
+        return None
+    n = n & 0xFFFFFFFFFFFFFFFF
+    return n - (1 << 64) if n >= (1 << 63) else n

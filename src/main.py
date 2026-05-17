@@ -1,8 +1,9 @@
 """한 사이클 엔트리포인트. Windows Task Scheduler가 이 모듈을 호출.
 
-흐름: phase 0(부팅) → 1(수집) → 2(정규화) → 3(클러스터링) → 4(분류) →
-      5(선정) → 6(글 생성) → 7(이미지) → 8(품질 게이트) → 9(발행) → 10(정리).
-각 단계는 외부 IO 실패에도 사이클 자체가 죽지 않도록 graceful 처리한다.
+V3 흐름: phase 0(부팅) → 1(수집) → 2(정규화) → 3(클러스터링) →
+        5(선정 N개) → 각 후보마다 4(분류) → 6(글) → 7(이미지) → 8(게이트) → 9(발행)
+        → 10(정리).
+각 글은 독립적 — 한 편이 실패해도 다음 편은 계속.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import json
 import sys
 
 from src.cluster.merge import cluster_only, enrich_with_llm
+from src.cluster.simhash import hamming
 from src.collectors.registry import load_active_collectors
 from src.config_loader import DATA_DIR, get_settings
 from src.images import attach_images
@@ -18,9 +20,8 @@ from src.llm import CycleQuotaExceeded, get_cycle_call_count, reset_cycle_counte
 from src.logging_setup import get_logger, setup_logging
 from src.normalize import normalize_batch
 from src.publisher import publish
-from src.quality.gate import GateResult, evaluate
 from src.selector.followup import encode_embedding, find_followup
-from src.selector.score import pick_topic
+from src.selector.score import IN_CYCLE_SIMHASH_GAP, is_recent_duplicate, pick_topics
 from src.state.db import connect, migrate
 from src.state.repo import record_published, record_source_failure, record_source_success
 from src.utils.lockfile import LockBusy, cycle_lock
@@ -48,6 +49,59 @@ def _save_trends_dump(items: list, suffix: str = "") -> None:
     (dump_dir / fname).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _publish_one(candidate, *, log, settings, in_cycle_simhashes: list[int]) -> bool:
+    """후보 클러스터 1개를 enrich → 게이트 통과 시 발행. 성공이면 True."""
+    candidate = enrich_with_llm(candidate)
+
+    # enrich 후 정확한 simhash 로 다시 한 번 중복 검사 (이전 글 + in-cycle 양쪽)
+    if is_recent_duplicate(candidate.simhash, days=settings.duplicate_window_days):
+        log.info("article.skip_dup_after_enrich",
+                 title=candidate.event_title, simhash=candidate.simhash)
+        return False
+    if any(hamming(candidate.simhash, h) <= IN_CYCLE_SIMHASH_GAP for h in in_cycle_simhashes):
+        log.info("article.skip_in_cycle_dup",
+                 title=candidate.event_title, simhash=candidate.simhash)
+        return False
+
+    log.info("article.enriched",
+             title=candidate.event_title, category=candidate.category,
+             simhash=candidate.simhash)
+
+    followup = find_followup(candidate)
+    if followup:
+        log.info("article.followup_attached",
+                 prev=followup.previous_title, cosine=followup.cosine)
+
+    article, gate = write_article(candidate, followup=followup)
+    if gate.outcome != "pass":
+        log.warning("article.gate_failed", title=candidate.event_title,
+                    failures=gate.failures, score=gate.score)
+        return False
+
+    if followup and followup.previous_url:
+        article.updates_url = followup.previous_url
+
+    attach_images(article, candidate)
+
+    info = publish(article)
+    log.info("article.published", path=str(info.post_path),
+             pushed=info.pushed, sha=info.commit_sha)
+
+    with connect() as conn:
+        record_published(
+            conn,
+            cluster_simhash=candidate.simhash,
+            title=article.title,
+            category=article.category,
+            post_path=str(info.post_path),
+            source_urls=[s.url for s in article.sources],
+            cluster_embedding=encode_embedding(candidate.embedding)
+                if candidate.embedding is not None else None,
+        )
+    in_cycle_simhashes.append(candidate.simhash)
+    return True
+
+
 def run_cycle() -> int:
     setup_logging()
     log = get_logger("main")
@@ -55,7 +109,10 @@ def run_cycle() -> int:
 
     try:
         with cycle_lock():
-            log.info("cycle.start", dry_run=settings.dry_run, ts=iso_now())
+            log.info("cycle.start",
+                     dry_run=settings.dry_run, ts=iso_now(),
+                     articles_per_cycle=settings.articles_per_cycle,
+                     duplicate_window_days=settings.duplicate_window_days)
             migrate()
             reset_cycle_counter()
 
@@ -86,68 +143,54 @@ def run_cycle() -> int:
             log.info("cycle.normalized", n=len(items))
             _save_trends_dump(items)
 
-            # phase 3: cluster (LLM 없이 임베딩+HDBSCAN+가벼운 메타)
+            # phase 3: cluster (LLM 없이)
             clusters = cluster_only(items)
             log.info("cycle.clusters", n=len(clusters))
             if not clusters:
                 log.info("cycle.no_clusters")
                 return 0
 
-            # phase 5: select 1 candidate (점수만으로)
-            selected = pick_topic(clusters)
-            if not selected:
+            # phase 5: select N
+            candidates = pick_topics(clusters, n=settings.articles_per_cycle)
+            log.info("cycle.candidates", n=len(candidates))
+            if not candidates:
                 log.info("cycle.nothing_to_publish")
                 return 0
-            log.info("cycle.selected_candidate",
-                     title=selected.event_title, sources=selected.source_diversity,
-                     size=len(selected.items))
 
-            # phase 3+4: 선정된 클러스터 1개만 LLM 으로 통합 요약 + 카테고리 분류
-            selected = enrich_with_llm(selected)
-            log.info("cycle.enriched",
-                     title=selected.event_title, category=selected.category)
+            # phase 6~9: 후보 마다 enrich → write → gate → image → publish
+            in_cycle_simhashes: list[int] = []
+            published_count = 0
+            for idx, candidate in enumerate(candidates, 1):
+                try:
+                    ok = _publish_one(
+                        candidate,
+                        log=log,
+                        settings=settings,
+                        in_cycle_simhashes=in_cycle_simhashes,
+                    )
+                    if ok:
+                        published_count += 1
+                except CycleQuotaExceeded:
+                    log.error("cycle.quota_exceeded_midway",
+                              published=published_count,
+                              llm_calls=get_cycle_call_count())
+                    raise
+                except Exception:
+                    log.exception("article.unhandled", idx=idx,
+                                  title=getattr(candidate, "event_title", "?"))
+                    continue
 
-            # follow-up 모드 — 8~30일 내 비슷한 사건 있으면 컨텍스트 첨부
-            followup = find_followup(selected)
-            if followup:
-                log.info("cycle.followup", prev=followup.previous_title, cosine=followup.cosine)
-
-            # phase 6+8: write + gate + rewrite loop
-            article, gate = write_article(selected, followup=followup)
-            if gate.outcome != "pass":
-                log.warning("cycle.gate_failed_terminal",
-                            failures=gate.failures, score=gate.score)
-                return 0
-
-            if followup and followup.previous_url:
-                article.updates_url = followup.previous_url
-
-            # phase 7: images — 헤더 1장 + 본문 마커 0~3장
-            attach_images(article, selected)
-
-            # phase 9: publish
-            info = publish(article)
-            log.info("cycle.published", path=str(info.post_path), pushed=info.pushed)
-
-            with connect() as conn:
-                record_published(
-                    conn,
-                    cluster_simhash=selected.simhash,
-                    title=article.title,
-                    category=article.category,
-                    post_path=str(info.post_path),
-                    source_urls=[s.url for s in article.sources],
-                    cluster_embedding=encode_embedding(selected.embedding)
-                        if selected.embedding is not None else None,
-                )
-
-            log.info("cycle.end", status="ok", llm_calls=get_cycle_call_count())
+            log.info("cycle.end", status="ok",
+                     published=published_count,
+                     attempted=len(candidates),
+                     llm_calls=get_cycle_call_count())
             return 0
     except LockBusy as e:
         log.warning("cycle.lock_busy", reason=str(e))
         return 0
     except CycleQuotaExceeded as e:
-        log.error("cycle.quota_exceeded", reason=str(e), llm_calls=get_cycle_call_count())
+        log.error("cycle.quota_exceeded", reason=str(e),
+                  llm_calls=get_cycle_call_count())
         return 0
     except Exception:
         log.exception("cycle.unhandled_error", llm_calls=get_cycle_call_count())

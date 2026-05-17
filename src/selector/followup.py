@@ -18,8 +18,9 @@ log = get_logger("selector.followup")
 
 # 임베딩 코사인 임계 (1.0 = 동일, 0.88 = 매우 유사)
 FOLLOWUP_COSINE_THRESHOLD = 0.88
-FOLLOWUP_WINDOW_MIN_DAYS = 8
-FOLLOWUP_WINDOW_MAX_DAYS = 30
+# V3: 중복 가드 윈도우가 30일이 됐으므로 follow-up 은 30일 밖에서만 발동
+FOLLOWUP_WINDOW_MIN_DAYS = 30
+FOLLOWUP_WINDOW_MAX_DAYS = 90
 
 
 @dataclass

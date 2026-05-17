@@ -7,6 +7,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from typing import Any
 
+from src.cluster.simhash import to_signed64
 from src.utils.timeutil import iso_now, now_seoul
 
 
@@ -27,7 +28,7 @@ def record_published(
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            cluster_simhash,
+            to_signed64(cluster_simhash),
             cluster_embedding,
             title,
             category,
@@ -65,7 +66,7 @@ def record_attempt(
         VALUES (?, ?, ?, ?, ?, ?)
         """,
         (
-            cluster_simhash,
+            to_signed64(cluster_simhash) if cluster_simhash is not None else None,
             attempt_num,
             gate_score,
             json.dumps(gate_failures, ensure_ascii=False),

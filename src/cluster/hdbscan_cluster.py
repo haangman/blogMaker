@@ -57,8 +57,10 @@ def cluster_items(items: list[NormalizedItem]) -> list[list[NormalizedItem]]:
     else:
         try:
             import hdbscan
+            # V3: 5편 후보 확보 위해 min_cluster_size 2 로 낮춤
+            # (cluster_only 가 LLM 호출을 안 하므로 폭주 위험 없음 — 점수 상위 5개만 enrich)
             labels = list(
-                hdbscan.HDBSCAN(min_cluster_size=3, min_samples=2, metric="euclidean")
+                hdbscan.HDBSCAN(min_cluster_size=2, min_samples=1, metric="euclidean")
                 .fit_predict(vecs)
             )
         except Exception as e:

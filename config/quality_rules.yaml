@@ -26,7 +26,8 @@ stats:
   token_ratio_block: 0.030          # 한 토큰이 본문의 3% 초과 시 차단
   token_ratio_warn: 0.015
   first_last_paragraph_jaccard_max: 0.30
-  same_sentence_ending_streak_max: 5
+  # 한국어 평서문은 '다.' 종결이 기본이라 5는 너무 엄격. V3 에서 7 로 완화.
+  same_sentence_ending_streak_max: 7
 
 length:
   min_chars: 300

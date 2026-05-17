@@ -161,8 +161,15 @@ J-Blog/
 - [x] **Step 5: cluster + categorize + selector** — sentence-transformers + HDBSCAN(폴백 코사인+union-find) + simhash 매칭 + 카테고리 다양성 페널티
 - [x] **Step 6: persona analyzer CLI** — `analyze-persona --url ...` 으로 RSS/sitemap 수집 → 톤 분석 → `persona.generated.md` 자동 생성
 - [x] **Step 7: 이미지 + 게이트 확장** — Unsplash → Pexels 폴백, 통계/페르소나 체크 + must_contain_any 검사
-- [x] **Step 8: 나머지 collectors + follow-up 모드** — Reddit/Google News(ko·en)/BBC/KoreanNews(연합·ETNews·한겨레)/Lobsters 활성화, source_health로 3연속 실패 시 자동 비활성, 8~30일 임베딩 코사인≥0.88 매치 시 follow-up 글로 변환(이전 글 컨텍스트 첨부 + frontmatter `updates:` + tag)
+- [x] **Step 8: 나머지 collectors + follow-up 모드** — Reddit/Google News(ko·en)/BBC/KoreanNews(연합·ETNews·한겨레)/Lobsters 활성화, source_health로 3연속 실패 시 자동 비활성
 - [x] **Step 9: Windows Task Scheduler 설정** — `scripts/run_cycle.ps1` 래퍼, `scripts/setup_task.ps1` 자동 등록 스크립트, `scripts/task_blogmaker.xml` 참고 템플릿
+- [x] **V2: 글 친절도 + 다중 이미지 마커** — 길이 800~2400자 위주, `[IMAGE: "..."]` 마커 시스템(헤더 1장 + 본문 0~3장), 이미지 키워드 프롬프트 구체화
+- [x] **V3: 일상 토픽 우선 + 사이클당 5편 + 중복 30일**
+    - selector 점수에 `lifestyle` 가중치 영구 적용 (HN/Lobsters 0.10, Reddit popular 0.90, 한국 매체 0.85)
+    - `pick_topics(n=5)` 다중 선정 + in-cycle simhash 가드
+    - 중복 가드 윈도우 7일 → **30일** (`DUPLICATE_WINDOW_DAYS`)
+    - follow-up 윈도우 8~30일 → **30~90일** (중복 가드와 겹치지 않게)
+    - `ARTICLES_PER_CYCLE`, `DUPLICATE_WINDOW_DAYS` 환경변수 추가
 
 ### Task Scheduler 등록 (사용자가 실행)
 ```powershell
