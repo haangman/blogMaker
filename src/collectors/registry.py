@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 
 from src.collectors.base import Collector
 from src.config_loader import load_sources
@@ -23,14 +24,20 @@ _MODULE_CLASS = {
 
 
 def _disabled_source_ids() -> set[str]:
+    out: set[str] = set()
+    # 환경변수로 즉석 비활성 — 콤마 구분 ID 목록
+    env = os.environ.get("BLOGMAKER_DISABLED_SOURCES", "")
+    if env:
+        out.update(s.strip() for s in env.split(",") if s.strip())
     try:
         with connect() as conn:
             rows = conn.execute(
                 "SELECT source_id FROM source_health WHERE disabled = 1"
             ).fetchall()
-        return {r["source_id"] for r in rows}
+        out.update(r["source_id"] for r in rows)
     except Exception:
-        return set()
+        pass
+    return out
 
 
 def load_active_collectors() -> list[Collector]:
