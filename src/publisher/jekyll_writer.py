@@ -110,7 +110,9 @@ def build_frontmatter(
         if draft.summary:
             meta["subtitle"] = draft.summary[:120]
         if image_abs:
-            meta["cover-img"] = image_abs
+            # beautiful-jekyll 6.x header.html 의 for-loop 가 cover-img 를 list 로 expect.
+            # 단일 string 으로 두면 hero 배경 이미지가 안 뜬다.
+            meta["cover-img"] = [image_abs]
             meta["thumbnail-img"] = image_abs
             meta["share-img"] = image_abs
             meta["image"] = image_abs   # jekyll-seo-tag 도 인식

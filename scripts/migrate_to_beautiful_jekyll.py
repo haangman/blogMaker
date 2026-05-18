@@ -33,12 +33,18 @@ def migrate_post(path: Path, *, dry_run: bool = False) -> dict:
     fm = post.metadata
     changes: list[str] = []
 
-    # 1) image → cover-img / thumbnail-img / share-img
+    # 1) image → cover-img(list) / thumbnail-img / share-img
+    # beautiful-jekyll 6.x header.html 가 cover-img 를 list 로 expect — 단일 string 은
+    # for loop 가 안 돌아 hero 배경 이미지가 안 뜬다.
     img = fm.get("image")
     if isinstance(img, str) and img.strip():
-        if not fm.get("cover-img"):
-            fm["cover-img"] = img
+        cover = fm.get("cover-img")
+        if cover is None:
+            fm["cover-img"] = [img]
             changes.append("cover-img")
+        elif isinstance(cover, str):
+            fm["cover-img"] = [cover]
+            changes.append("cover-img-listify")
         if not fm.get("thumbnail-img"):
             fm["thumbnail-img"] = img
             changes.append("thumbnail-img")
