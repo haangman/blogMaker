@@ -1,0 +1,93 @@
+# 패션 / 뷰티 트렌드 수집 소스.
+
+sources:
+  # ---- 글로벌 패션·뷰티 매체 (RSS) ----
+  - id: vogue
+    enabled: true
+    module: rss_feed
+    description: "Vogue 미국판 — 글로벌 패션 트렌드"
+    params:
+      url: "https://www.vogue.com/feed/rss"
+      limit: 30
+
+  - id: allure
+    enabled: true
+    module: rss_feed
+    description: "Allure — 뷰티·스킨케어·메이크업"
+    params:
+      url: "https://www.allure.com/feed/rss"
+      limit: 30
+
+  - id: elle
+    enabled: true
+    module: rss_feed
+    description: "ELLE — 패션·셀럽·라이프"
+    params:
+      url: "https://www.elle.com/rss/all.xml/"
+      limit: 30
+
+  - id: refinery29
+    enabled: true
+    module: rss_feed
+    description: "Refinery29 — 패션·뷰티 트렌드"
+    params:
+      url: "https://www.refinery29.com/rss.xml"
+      limit: 30
+
+  # ---- 한국 패션·뷰티 매체 ----
+  - id: fashionbiz
+    enabled: true
+    module: rss_feed
+    description: "패션비즈 — 한국 패션 산업"
+    params:
+      url: "https://www.fashionbiz.co.kr/RSS/news.xml"
+      limit: 30
+
+  # Google News 의 'FASHION' topic 은 표준 코드가 아니라 일단 비활성.
+  # 후속에 search 쿼리(`/rss/search?q=fashion`) 형태로 추가 가능.
+
+  # ---- Reddit 패션·뷰티 커뮤니티 ----
+  - id: reddit_femalefashion
+    enabled: true
+    module: reddit
+    description: "/r/femalefashionadvice — 여성 패션"
+    params:
+      subreddit: femalefashionadvice
+      limit: 30
+      t: day
+
+  - id: reddit_malefashion
+    enabled: true
+    module: reddit
+    description: "/r/malefashionadvice — 남성 패션"
+    params:
+      subreddit: malefashionadvice
+      limit: 30
+      t: day
+
+  - id: reddit_makeupaddiction
+    enabled: true
+    module: reddit
+    description: "/r/MakeupAddiction — 뷰티·메이크업"
+    params:
+      subreddit: MakeupAddiction
+      limit: 30
+      t: day
+
+  - id: reddit_skincareaddiction
+    enabled: true
+    module: reddit
+    description: "/r/SkincareAddiction — 스킨케어"
+    params:
+      subreddit: SkincareAddiction
+      limit: 30
+      t: day
+
+  - id: reddit_fashion
+    enabled: true
+    module: reddit
+    description: "/r/fashion — 일반 패션"
+    params:
+      subreddit: fashion
+      limit: 30
+      t: day

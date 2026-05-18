@@ -63,10 +63,28 @@ SOURCE_AI_RELEVANCE: dict[str, float] = {
 }
 _AI_DEFAULT = 0.30
 
+# 패션·뷰티 블로그(fashion) selector 가중치
+SOURCE_FASHION_RELEVANCE: dict[str, float] = {
+    "vogue":                  0.95,
+    "allure":                 0.95,
+    "elle":                   0.90,
+    "refinery29":             0.90,
+    "fashionbiz":             0.90,
+    "google_news_fashion_ko": 0.85,
+    "google_news_fashion_en": 0.85,
+    "reddit_femalefashion":   0.85,
+    "reddit_malefashion":     0.80,
+    "reddit_makeupaddiction": 0.85,
+    "reddit_skincareaddiction": 0.85,
+    "reddit_fashion":         0.80,
+}
+_FASHION_DEFAULT = 0.30
+
 
 _PROFILE_WEIGHTS: dict[str, tuple[dict[str, float], float]] = {
     "lifestyle": (SOURCE_LIFESTYLE, _LIFESTYLE_DEFAULT),
     "ai":        (SOURCE_AI_RELEVANCE, _AI_DEFAULT),
+    "fashion":   (SOURCE_FASHION_RELEVANCE, _FASHION_DEFAULT),
 }
 
 

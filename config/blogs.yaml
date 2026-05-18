@@ -28,3 +28,17 @@ blogs:
     articles_per_cycle: 5
     backlog_file: "ai_backlog.yaml"
     backlog_ratio: 0.4   # 5편 중 ~2편을 백로그에서
+
+  - id: fashion
+    enabled: true
+    name: "fashion log"
+    repo_path: "../J-Blog-Fashion"
+    repo_name: "J-Blog-Fashion"
+    baseurl: "/J-Blog-Fashion"
+    sources_file: "sources.fashion.yaml"
+    categories_file: "categories.fashion.yaml"
+    persona_files: ["persona.fashion.generated.md", "persona.fashion.md"]
+    selector_profile: "fashion"
+    articles_per_cycle: 5
+    backlog_file: null    # 트렌드 5편만 (백로그 없음 — 사용자 요청 '세계적으로 핫한 5가지')
+    backlog_ratio: 0.0
