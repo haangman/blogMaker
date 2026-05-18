@@ -54,6 +54,13 @@ def build_post_filename(slug: str, date_str: str | None = None) -> str:
     return f"{date_str or today_slug_date()}-{slug}.md"
 
 
+_MERMAID_BLOCK_RE = re.compile(r"^```mermaid\b", flags=re.MULTILINE)
+
+
+def _body_has_mermaid(body: str) -> bool:
+    return bool(_MERMAID_BLOCK_RE.search(body or ""))
+
+
 def build_frontmatter(
     draft: ArticleDraft,
     slug: str,
@@ -62,25 +69,71 @@ def build_frontmatter(
     site_url: str = "",
     baseurl: str = "",
     header_relpath: str | None = None,
+    theme: str = "minima",
+    body_has_mermaid: bool = False,
 ) -> dict:
+    """블로그 테마별 frontmatter 출력.
+
+    - minima:           기존 형식 (`category: single`, `image: url`)
+    - chirpy:           `categories: [c]`, `image: {path, alt}`
+    - beautiful-jekyll: `categories: [c]`, `cover-img`, `thumbnail-img`, `subtitle`
+    """
+    image_abs: str | None = None
+    if header_relpath and site_url:
+        image_abs = f"{site_url.rstrip('/')}{baseurl}/{header_relpath.lstrip('/')}"
+    cat_ko = _category_label_ko(draft.category, categories_file)
+
+    # minimal-mistakes 는 layout: single 이 표준 글 레이아웃. 다른 테마는 layout: post.
+    layout = "single" if theme == "minimal-mistakes" else "post"
+
     meta: dict = {
-        "layout": "post",
+        "layout": layout,
         "title": draft.title,
         "date": iso_now(),
-        "category": draft.category,
-        "category_ko": _category_label_ko(draft.category, categories_file),
         "tags": draft.tags,
         "summary": draft.summary,
-        # jekyll-seo-tag 가 description / og:description 으로 사용
         "description": draft.summary,
         "slug": slug,
     }
-    # SEO: OG image — 헤더 이미지 절대 URL.
-    # jekyll-seo-tag 가 frontmatter 의 image 를 og:image, twitter:image 로 자동 출력.
-    if header_relpath and site_url:
-        absolute = f"{site_url.rstrip('/')}{baseurl}/{header_relpath.lstrip('/')}"
-        meta["image"] = absolute
-    # 빈 sources 는 frontmatter 에 노출하지 않음 (backlog 글 등)
+
+    if theme == "chirpy":
+        meta["categories"] = [draft.category]
+        meta["category_ko"] = cat_ko
+        if image_abs:
+            meta["image"] = {"path": image_abs, "alt": draft.title}
+        # chirpy 는 글에 mermaid 블록이 있을 때 frontmatter mermaid: true 필요.
+        if body_has_mermaid:
+            meta["mermaid"] = True
+    elif theme == "beautiful-jekyll":
+        meta["categories"] = [draft.category]
+        meta["category_ko"] = cat_ko
+        if draft.summary:
+            meta["subtitle"] = draft.summary[:120]
+        if image_abs:
+            meta["cover-img"] = image_abs
+            meta["thumbnail-img"] = image_abs
+            meta["share-img"] = image_abs
+            meta["image"] = image_abs   # jekyll-seo-tag 도 인식
+    elif theme == "minimal-mistakes":
+        # minimal-mistakes: header.teaser + header.overlay_image 가 핵심 비주얼.
+        # excerpt 가 archive 페이지 카드 발췌문으로 사용된다.
+        meta["categories"] = [draft.category]
+        meta["category_ko"] = cat_ko
+        if draft.summary:
+            meta["excerpt"] = draft.summary[:160]
+        if image_abs:
+            meta["header"] = {
+                "teaser": image_abs,
+                "overlay_image": image_abs,
+                "overlay_filter": 0.35,   # 어둡게 — 텍스트 가독성
+            }
+            meta["image"] = image_abs  # jekyll-seo-tag 호환 (og:image)
+    else:  # minima 등
+        meta["category"] = draft.category
+        meta["category_ko"] = cat_ko
+        if image_abs:
+            meta["image"] = image_abs
+
     if draft.sources:
         meta["sources"] = [{"url": s.url, "title": s.title} for s in draft.sources]
     if draft.updates_url:
@@ -123,6 +176,7 @@ def render_post(
     categories_file: str = "categories.yaml",
     site_url: str = "",
     baseurl: str = "",
+    theme: str = "minima",
 ) -> str:
     """글 1편의 최종 마크다운 (frontmatter + 본문) 반환.
 
@@ -131,9 +185,11 @@ def render_post(
     """
     parts: list[str] = []
 
-    # 1) 헤더 이미지
+    # 1) 헤더 이미지 — minima 만 본문에 마크다운으로 삽입.
+    #    chirpy/beautiful-jekyll/minimal-mistakes 는 frontmatter 의 hero/cover/overlay 가
+    #    본문 위에 자동 렌더링되므로 본문 마크다운으로 또 넣으면 이미지가 두 번 보인다.
     header = next((im for im in draft.images if im.marker_keyword is None), None)
-    if header and header_relpath:
+    if header and header_relpath and theme == "minima":
         parts.append(_image_markdown(header, header_relpath))
         parts.append("")
 
@@ -165,5 +221,7 @@ def render_post(
         site_url=site_url,
         baseurl=baseurl,
         header_relpath=header_relpath,
+        theme=theme,
+        body_has_mermaid=_body_has_mermaid(full),
     )
     return build_markdown(fm, full)

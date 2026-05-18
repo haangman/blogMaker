@@ -1,4 +1,8 @@
 # 멀티 블로그 정의. 한 사이클이 enabled=true 블로그를 순차 처리.
+# theme 필드는 publisher 가 frontmatter 형식을 분기할 때 사용:
+#   - minima:           기존 형식 (category 단일, image: url)
+#   - chirpy:           categories: [c], image: {path, alt}
+#   - beautiful-jekyll: cover-img: url + thumbnail-img + tags
 
 blogs:
   - id: trends
@@ -14,6 +18,7 @@ blogs:
     articles_per_cycle: 5
     backlog_file: null
     backlog_ratio: 0.0
+    theme: "beautiful-jekyll"   # V7-B-2: 따뜻한 잡지 톤
 
   - id: ai
     enabled: true
@@ -28,6 +33,7 @@ blogs:
     articles_per_cycle: 5
     backlog_file: "ai_backlog.yaml"
     backlog_ratio: 0.4   # 5편 중 ~2편을 백로그에서
+    theme: "chirpy"             # V7-B-1: 모던 개발자 톤 (다크모드/TOC)
 
   - id: fashion
     enabled: true
@@ -40,5 +46,6 @@ blogs:
     persona_files: ["persona.fashion.generated.md", "persona.fashion.md"]
     selector_profile: "fashion"
     articles_per_cycle: 5
-    backlog_file: null    # 트렌드 5편만 (백로그 없음 — 사용자 요청 '세계적으로 핫한 5가지')
+    backlog_file: null    # 트렌드 5편만 (사용자 요청 '세계적으로 핫한 5가지')
     backlog_ratio: 0.0
+    theme: "minimal-mistakes"   # V8-B: 잡지 splash 톤 (오버레이 이미지)

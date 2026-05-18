@@ -24,10 +24,11 @@ class BlogProfile:
     sources_file: str              # 'sources.yaml' / 'sources.ai.yaml'
     categories_file: str
     persona_files: list[str]       # 합성 순서: generated 먼저, user 마지막 (우선)
-    selector_profile: str          # 'lifestyle' | 'ai'
+    selector_profile: str          # 'lifestyle' | 'ai' | 'fashion'
     articles_per_cycle: int = 5
     backlog_file: str | None = None  # 'ai_backlog.yaml' or None
     backlog_ratio: float = 0.0       # 사이클당 글 중 백로그 비율 (0~1)
+    theme: str = "minima"            # 'minima' | 'chirpy' | 'beautiful-jekyll' — publisher frontmatter 분기
     extras: dict = field(default_factory=dict)
 
     def repo_abs_path(self) -> Path:
@@ -75,6 +76,7 @@ def load_blogs() -> list[BlogProfile]:
                 articles_per_cycle=int(entry.get("articles_per_cycle", 5)),
                 backlog_file=entry.get("backlog_file"),
                 backlog_ratio=float(entry.get("backlog_ratio", 0.0)),
+                theme=entry.get("theme", "minima"),
                 extras=entry.get("extras") or {},
             )
         )

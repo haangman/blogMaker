@@ -78,6 +78,7 @@ def publish(
             categories_file=blog.categories_file,
             site_url="https://haangman.github.io",
             baseurl=blog.baseurl,
+            theme=blog.theme,
         ),
         encoding="utf-8",
     )
