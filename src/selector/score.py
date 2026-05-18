@@ -11,6 +11,8 @@ import math
 from collections import Counter
 from datetime import timedelta
 
+import numpy as np
+
 from src.cluster.merge import TopicCluster
 from src.cluster.simhash import hamming
 from src.config_loader import get_settings, load_categories
@@ -18,6 +20,19 @@ from src.logging_setup import get_logger
 from src.state.db import connect
 from src.state.repo import published_recently
 from src.utils.timeutil import now_seoul
+
+# 같은 사건이라도 cluster_merge 가 매번 다른 제목/요약을 만들면 simhash 가 흔들림.
+# 임베딩 코사인이 더 안정적이라 simhash 와 함께 가드 — 둘 중 하나라도 매치면 중복.
+DUPLICATE_COSINE_THRESHOLD = 0.85
+
+
+def _decode_embedding(blob: bytes | None) -> np.ndarray | None:
+    if not blob:
+        return None
+    try:
+        return np.frombuffer(blob, dtype=np.float32)
+    except Exception:
+        return None
 
 log = get_logger("selector")
 
@@ -84,11 +99,14 @@ def is_recent_duplicate(
     days: int | None = None,
     max_hamming: int = 3,
     blog_id: str | None = None,
+    embedding: np.ndarray | None = None,
+    cosine_threshold: float = DUPLICATE_COSINE_THRESHOLD,
 ) -> bool:
-    """발행 이력 안에서 simhash 매치 검사 (블로그별 필터링).
+    """발행 이력 안에서 simhash 또는 임베딩 코사인 매치 검사.
 
-    days 기본은 settings.duplicate_window_days.
-    blog_id 가 주어지면 그 블로그의 발행만 비교 (cross-blog 오염 방지).
+    simhash 만으로는 cluster_merge 가 매번 다른 제목/요약을 만들 때 흔들리므로,
+    임베딩 코사인 (cluster_embedding BLOB) 도 함께 비교한다.
+    둘 중 하나라도 매치되면 중복으로 판정.
     """
     if days is None:
         days = get_settings().duplicate_window_days
@@ -96,20 +114,34 @@ def is_recent_duplicate(
     with connect() as conn:
         if blog_id:
             rows = conn.execute(
-                "SELECT cluster_simhash FROM published WHERE published_at >= ? AND blog_id = ?",
+                "SELECT cluster_simhash, cluster_embedding FROM published "
+                "WHERE published_at >= ? AND blog_id = ?",
                 (since, blog_id),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT cluster_simhash FROM published WHERE published_at >= ?",
+                "SELECT cluster_simhash, cluster_embedding FROM published WHERE published_at >= ?",
                 (since,),
             ).fetchall()
+
+    q_norm: np.ndarray | None = None
+    if embedding is not None and embedding.size:
+        q_norm = embedding / (np.linalg.norm(embedding) + 1e-9)
+
     for r in rows:
+        # 1) simhash
         try:
             if hamming(int(r["cluster_simhash"]), simhash) <= max_hamming:
                 return True
         except (TypeError, ValueError):
-            continue
+            pass
+        # 2) embedding cosine
+        if q_norm is not None:
+            v = _decode_embedding(r["cluster_embedding"])
+            if v is not None and v.size == q_norm.size:
+                v_norm = v / (np.linalg.norm(v) + 1e-9)
+                if float(np.dot(q_norm, v_norm)) >= cosine_threshold:
+                    return True
     return False
 
 
@@ -175,7 +207,12 @@ def pick_topics(
 
     scored: list[tuple[float, TopicCluster]] = []
     for c in clusters:
-        if is_recent_duplicate(c.simhash, days=settings.duplicate_window_days, blog_id=blog_id):
+        if is_recent_duplicate(
+            c.simhash,
+            days=settings.duplicate_window_days,
+            blog_id=blog_id,
+            embedding=c.embedding,
+        ):
             log.info("selector.dropped_duplicate",
                      title=c.event_title, simhash=c.simhash,
                      window_days=settings.duplicate_window_days,

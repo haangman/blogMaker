@@ -80,7 +80,8 @@ def _publish_one(
 
     if is_recent_duplicate(candidate.simhash,
                             days=settings.duplicate_window_days,
-                            blog_id=blog.id):
+                            blog_id=blog.id,
+                            embedding=candidate.embedding):
         log.info("article.skip_dup_after_enrich",
                  title=candidate.event_title, simhash=candidate.simhash, blog=blog.id)
         return False
