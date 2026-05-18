@@ -143,9 +143,18 @@ def build_frontmatter(
     return meta
 
 
-def _image_markdown(image: ImageRef, relpath: str) -> str:
+def _image_markdown(image: ImageRef, relpath: str, *, site_url: str = "", baseurl: str = "") -> str:
+    """본문 이미지 markdown. chirpy 가 markdown src 에 site.baseurl 을 또 prepend 하는
+    동작 (baseurl 이중 첨가) 때문에, site_url 이 주어지면 절대 URL 로 출력한다.
+    그래야 모든 테마(minima/chirpy/beautiful-jekyll/minimal-mistakes)에서 동일 동작.
+    """
     alt = image.alt or "image"
-    lines = [f'![{alt}]({{{{ site.baseurl }}}}/{relpath.lstrip("/")})']
+    rel = relpath.lstrip("/")
+    if site_url:
+        src = f"{site_url.rstrip('/')}{baseurl}/{rel}"
+    else:
+        src = f"{{{{ site.baseurl }}}}/{rel}"
+    lines = [f'![{alt}]({src})']
     if image.credit:
         if image.credit_url:
             lines.append(f"*[{image.credit}]({image.credit_url})*")
@@ -154,7 +163,13 @@ def _image_markdown(image: ImageRef, relpath: str) -> str:
     return "\n".join(lines)
 
 
-def _replace_body_markers(body: str, marker_to_relpath: dict[str, tuple[ImageRef, str]]) -> str:
+def _replace_body_markers(
+    body: str,
+    marker_to_relpath: dict[str, tuple[ImageRef, str]],
+    *,
+    site_url: str = "",
+    baseurl: str = "",
+) -> str:
     """본문 마커를 ImageRef + 상대경로로 치환. 매칭 안 된 마커는 제거."""
 
     def repl(m):
@@ -163,7 +178,7 @@ def _replace_body_markers(body: str, marker_to_relpath: dict[str, tuple[ImageRef
         if not pair:
             return ""  # 매칭 안 됨 — 조용히 제거
         image, relpath = pair
-        return "\n\n" + _image_markdown(image, relpath) + "\n\n"
+        return "\n\n" + _image_markdown(image, relpath, site_url=site_url, baseurl=baseurl) + "\n\n"
 
     replaced = _MARKER_RE.sub(repl, body)
     return _strip_unmatched_markers(replaced)
@@ -192,13 +207,13 @@ def render_post(
     #    본문 위에 자동 렌더링되므로 본문 마크다운으로 또 넣으면 이미지가 두 번 보인다.
     header = next((im for im in draft.images if im.marker_keyword is None), None)
     if header and header_relpath and theme == "minima":
-        parts.append(_image_markdown(header, header_relpath))
+        parts.append(_image_markdown(header, header_relpath, site_url=site_url, baseurl=baseurl))
         parts.append("")
 
     # 2) 본문 — 마커 치환 후
     body = draft.body_markdown.rstrip()
     if body_marker_paths:
-        body = _replace_body_markers(body, body_marker_paths)
+        body = _replace_body_markers(body, body_marker_paths, site_url=site_url, baseurl=baseurl)
     else:
         # 헤더만 있고 본문 마커 처리가 없는 경우라도 잔여 마커는 제거
         body = _strip_unmatched_markers(body)
