@@ -28,6 +28,13 @@ BLOG_ROOTS = [
     REPO_ROOT.parent / "J-Blog-AI",
 ]
 
+# SEO: 기존 글에 image frontmatter 자동 backfill 할 때 사용
+SITE_URL = "https://haangman.github.io"
+BLOG_BASEURL = {
+    "J-Blog": "/J-Blog",
+    "J-Blog-AI": "/J-Blog-AI",
+}
+
 
 _IMG_RE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$")
 _CREDIT_LINE_RE = re.compile(r"^\s*\*\[?Photo by.*$|^\s*\*\[.*Photo by.*\]\(.*\).*\*\s*$")
@@ -130,7 +137,16 @@ def rewrite_references(body: str, sources: list[dict]) -> str:
     return "\n".join(parts)
 
 
-def clean_one(post_path: Path) -> dict:
+def _first_image_path(body: str) -> str | None:
+    """본문 첫 번째 이미지의 경로 (앞 부분에 등장하는 것 — 헤더로 추정)."""
+    for line in body.split("\n"):
+        m = _IMG_RE.match(line)
+        if m:
+            return m.group(2).strip()
+    return None
+
+
+def clean_one(post_path: Path, blog_name: str = "") -> dict:
     text = post_path.read_text(encoding="utf-8")
     post = frontmatter.loads(text)
     body = post.content
@@ -143,6 +159,7 @@ def clean_one(post_path: Path) -> dict:
         "dedup_removed": 0,
         "src_removed_idx": [],
         "fm_sources_emptied": False,
+        "image_added": False,
         "changed": False,
     }
 
@@ -167,7 +184,24 @@ def clean_one(post_path: Path) -> dict:
         info["fm_sources_emptied"] = True
         body = rewrite_references(body, [])
 
-    if info["dedup_removed"] or info["src_removed_idx"] or info["fm_sources_emptied"]:
+    # 4. SEO: image frontmatter backfill (헤더 이미지 절대 URL) + description
+    if blog_name and blog_name in BLOG_BASEURL and "image" not in meta:
+        first_img = _first_image_path(body)
+        if first_img:
+            # `{{ site.baseurl }}/path` → 절대 URL 로
+            resolved = first_img.replace(
+                "{{ site.baseurl }}", BLOG_BASEURL[blog_name]
+            )
+            if not resolved.startswith("http"):
+                resolved = SITE_URL + (resolved if resolved.startswith("/") else "/" + resolved)
+            meta["image"] = resolved
+            info["image_added"] = True
+    # jekyll-seo-tag 가 description 을 사용하므로 summary 와 동기화
+    if "description" not in meta and meta.get("summary"):
+        meta["description"] = meta["summary"]
+
+    if (info["dedup_removed"] or info["src_removed_idx"]
+            or info["fm_sources_emptied"] or info["image_added"]):
         info["changed"] = True
         new_post = frontmatter.Post(content=body, **meta)
         post_path.write_text(frontmatter.dumps(new_post), encoding="utf-8")
@@ -205,29 +239,33 @@ def main() -> None:
         print(f"\n=== {blog_root.name} ===")
         changes: list[dict] = []
         for post in sorted(posts_dir.glob("*.md")):
-            info = clean_one(post)
+            info = clean_one(post, blog_name=blog_root.name)
             if info["changed"]:
                 changes.append(info)
                 print(
                     f"  [CHANGED] {info['name']}  dedup={info['dedup_removed']}"
-                    f"  src_removed={info['src_removed_idx']}  fm_empty={info['fm_sources_emptied']}"
+                    f"  src_removed={info['src_removed_idx']}"
+                    f"  fm_empty={info['fm_sources_emptied']}"
+                    f"  image_added={info['image_added']}"
                 )
         if changes:
             overall_changes[blog_root.name] = changes
             msg_lines = [
-                f"chore: 이미지 중복 / 무관 sources / 빈 frontmatter 일괄 정리 ({len(changes)}편)",
+                f"chore: 이미지 중복 / 무관 sources / 빈 frontmatter / SEO image 일괄 정리 ({len(changes)}편)",
                 "",
                 "blogMaker scripts/clean_articles.py 가 자동 검사.",
                 "- 같은 이미지 마크다운이 두 번 이상 등장 → 두 번째 이후 제거 (크레딧 라인 포함)",
                 "- LLM(opus) 으로 본문 주제와 무관한 참고 링크 식별 후 제거",
                 "- 빈 sources frontmatter 키 제거 + 본문 끝 빈 참고 섹션 제거",
+                "- SEO: 헤더 이미지 절대 URL 을 frontmatter image 키에 backfill",
+                "  (jekyll-seo-tag 가 og:image / twitter:image 자동 생성)",
                 "",
                 "변경 글:",
             ]
             for c in changes:
                 msg_lines.append(
                     f"- {c['name']}: dedup={c['dedup_removed']} src={c['src_removed_idx']}"
-                    f" fm_empty={c['fm_sources_emptied']}"
+                    f" fm_empty={c['fm_sources_emptied']} image={c['image_added']}"
                 )
             msg_lines.append("")
             msg_lines.append("Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>")

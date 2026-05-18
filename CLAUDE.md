@@ -184,6 +184,26 @@ pwsh -ExecutionPolicy Bypass -File .\scripts\setup_task.ps1 -Remove     # 작업
 ```
 사용자 로그온 시 실행 — Claude Code CLI 세션이 사용자 컨텍스트에 묶이므로 다른 옵션 불가.
 
+### Google Search Console (GSC) 등록 — 한 번만 하면 됨
+
+신규 사이트가 Google 검색에 노출되려면 GSC 등록 + sitemap 제출이 가장 큰 단축.
+두 블로그 각각 등록한다.
+
+1. https://search.google.com/search-console 접속 (Google 계정 로그인)
+2. "속성 추가" → **URL 접두사** 선택
+3. URL 입력: `https://haangman.github.io/J-Blog/` (J-Blog-AI 는 별도 등록)
+4. 소유권 확인 → **HTML 태그** 방식 선택
+5. 받은 토큰 (`<meta name="google-site-verification" content="여기값">` 의 content 값)
+6. `J-Blog/_config.yml` 의 `google_site_verification:` 필드에 그 값 붙여넣기
+7. commit + push → GitHub Pages 빌드 1~2분 대기
+8. GSC 로 돌아가서 '확인' 클릭 → 소유권 인정
+9. 좌측 메뉴 **Sitemaps** → `sitemap.xml` 입력 → 제출
+10. 며칠~수 주 후 **Coverage / Pages** 에서 색인된 글 수 확인. `site:haangman.github.io/J-Blog` 로 Google 검색해서 직접 확인도 가능
+
+같은 절차를 **J-Blog-AI 에도** 반복 (verification 토큰은 별도 발급).
+
+신규 사이트는 첫 페이지 인덱싱까지 ~3~14일, 글 페이지는 그 뒤 점진적으로. 즉시 결과 안 보여도 정상.
+
 ### 운영 메모 — 사이클 강제 종료
 사이클을 도중에 멈춰야 한다면 **lock 파일을 먼저 지우지 말 것**. 잠금 가드는 PID 살아있는지 확인하는데, lock 만 먼저 지우면 살아있는 python 이 새 사이클과 동시에 돌면서 LLM 호출이 폭주할 수 있다 (구독 quota 빠르게 소진). 안전 순서:
 

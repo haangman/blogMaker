@@ -59,6 +59,9 @@ def build_frontmatter(
     slug: str,
     *,
     categories_file: str = "categories.yaml",
+    site_url: str = "",
+    baseurl: str = "",
+    header_relpath: str | None = None,
 ) -> dict:
     meta: dict = {
         "layout": "post",
@@ -68,8 +71,15 @@ def build_frontmatter(
         "category_ko": _category_label_ko(draft.category, categories_file),
         "tags": draft.tags,
         "summary": draft.summary,
+        # jekyll-seo-tag 가 description / og:description 으로 사용
+        "description": draft.summary,
         "slug": slug,
     }
+    # SEO: OG image — 헤더 이미지 절대 URL.
+    # jekyll-seo-tag 가 frontmatter 의 image 를 og:image, twitter:image 로 자동 출력.
+    if header_relpath and site_url:
+        absolute = f"{site_url.rstrip('/')}{baseurl}/{header_relpath.lstrip('/')}"
+        meta["image"] = absolute
     # 빈 sources 는 frontmatter 에 노출하지 않음 (backlog 글 등)
     if draft.sources:
         meta["sources"] = [{"url": s.url, "title": s.title} for s in draft.sources]
@@ -111,6 +121,8 @@ def render_post(
     header_relpath: str | None = None,
     body_marker_paths: dict[str, tuple[ImageRef, str]] | None = None,
     categories_file: str = "categories.yaml",
+    site_url: str = "",
+    baseurl: str = "",
 ) -> str:
     """글 1편의 최종 마크다운 (frontmatter + 본문) 반환.
 
@@ -146,4 +158,12 @@ def render_post(
             parts.append(f"- [{label}]({s.url})")
 
     full = "\n".join(parts)
-    return build_markdown(build_frontmatter(draft, slug, categories_file=categories_file), full)
+    fm = build_frontmatter(
+        draft,
+        slug,
+        categories_file=categories_file,
+        site_url=site_url,
+        baseurl=baseurl,
+        header_relpath=header_relpath,
+    )
+    return build_markdown(fm, full)

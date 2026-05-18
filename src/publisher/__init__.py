@@ -76,6 +76,8 @@ def publish(
             header_relpath=header_relpath,
             body_marker_paths=body_marker_paths,
             categories_file=blog.categories_file,
+            site_url="https://haangman.github.io",
+            baseurl=blog.baseurl,
         ),
         encoding="utf-8",
     )
