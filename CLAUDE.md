@@ -204,6 +204,37 @@ pwsh -ExecutionPolicy Bypass -File .\scripts\setup_task.ps1 -Remove     # 작업
 
 신규 사이트는 첫 페이지 인덱싱까지 ~3~14일, 글 페이지는 그 뒤 점진적으로. 즉시 결과 안 보여도 정상.
 
+### Giscus 댓글 설정 — 두 블로그 각각 한 번씩
+
+글 페이지에 댓글 영역을 띄운다. GitHub Discussions 기반이라 댓글이 각 블로그
+리포의 Discussions 에 저장됨. 광고 없음, 가벼움, 다크모드 자동. 작성자는 GitHub
+무료 계정 필요.
+
+각 블로그(J-Blog, J-Blog-AI)에 대해:
+
+1. **리포 Discussions 활성** — GitHub 웹: 리포 → Settings → General → Features
+   → "Discussions" 체크박스 ✅
+2. **Giscus app 설치** — https://github.com/apps/giscus → "Install" → 두 리포
+   (또는 All) 선택 → Save
+3. **giscus.app 에서 설정**
+   - Language: 한국어
+   - Repository: `haangman/J-Blog` (다음 라운드에 `haangman/J-Blog-AI`)
+   - "Page ↔ Discussions Mapping": **pathname**
+   - Discussion Category: **Announcements**
+   - Features: Reactions enabled
+   - Theme: `preferred_color_scheme`
+4. 페이지 하단에 생성된 `<script>` 태그 안에서 다음 두 값 복사:
+   - `data-repo-id="..."`
+   - `data-category-id="..."`
+5. 블로그 리포의 `_config.yml` 의 `giscus:` 블록에서
+   - `repo_id: "위 값"`
+   - `category_id: "위 값"`
+   - `enabled: true`
+   로 변경
+6. commit + push → GitHub Pages 빌드 1~2분 후 글 페이지 끝에 댓글 영역 노출
+
+J-Blog-AI 도 같은 절차 반복 (별도 토큰, 별도 Discussions).
+
 ### 운영 메모 — 사이클 강제 종료
 사이클을 도중에 멈춰야 한다면 **lock 파일을 먼저 지우지 말 것**. 잠금 가드는 PID 살아있는지 확인하는데, lock 만 먼저 지우면 살아있는 python 이 새 사이클과 동시에 돌면서 LLM 호출이 폭주할 수 있다 (구독 quota 빠르게 소진). 안전 순서:
 
