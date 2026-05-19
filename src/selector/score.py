@@ -97,7 +97,7 @@ IN_CYCLE_SIMHASH_GAP = 5
 # 잡아내기 위한 보조 가드 — in-cycle 중복 + 발행 이력 중복 둘 다 사용.
 # 0.5 = 토큰 절반 이상 겹치면 같은 사건.
 IN_CYCLE_TITLE_JACCARD = 0.5
-RECENT_TITLE_JACCARD = 0.6   # 30일 발행 이력과 비교할 때는 조금 더 엄격
+RECENT_TITLE_JACCARD = 0.5   # 사용자 결정: 30일 이력과의 자카드 임계도 0.5 (어제와 같은 사건이 다른 측면으로 또 발행되는 패턴 차단)
 
 
 _STOPWORDS = {
@@ -107,15 +107,42 @@ _STOPWORDS = {
     "is", "are", "was", "were", "be", "been", "with", "by", "from",
 }
 
+# 토큰 끝에 붙은 한국어 조사를 떼어낸다. 긴 조사부터 시도해서 정확히 매칭.
+# 예: "드레스코드와" → "드레스코드", "월드컵을" → "월드컵", "모스크바권에서" → "모스크바권"
+_KO_PARTICLES = (
+    "에서", "으로", "에게", "에서는", "에서도", "라는", "하고",
+    "와의", "과의", "와는", "과는",
+    "와", "과", "은", "는", "이", "가", "을", "를", "의", "에", "도", "만", "로",
+)
+
+
+def _strip_korean_particle(token: str) -> str:
+    if not token:
+        return token
+    # 한글로 끝나는 토큰에만 적용 (영어/숫자 토큰은 보존)
+    if not ("가" <= token[-1] <= "힣"):
+        return token
+    for p in _KO_PARTICLES:
+        if len(token) >= len(p) + 2 and token.endswith(p):
+            return token[: -len(p)]
+    return token
+
 
 def _title_norm(title: str) -> set[str]:
-    """제목을 정규화된 토큰 집합으로. 소문자 + 특수문자 제거 + stop words 제거.
+    """제목을 정규화된 토큰 집합으로.
+    소문자 + 특수문자 제거 + stop words 제거 + 한국어 조사 절단.
     토큰 길이 2 이상만 유지 (1글자 토큰은 노이즈)."""
     if not title:
         return set()
     cleaned = re.sub(r"[^\w가-힣\s]+", " ", title.lower())
-    tokens = [t for t in cleaned.split() if len(t) >= 2 and t not in _STOPWORDS]
-    return set(tokens)
+    out: set[str] = set()
+    for t in cleaned.split():
+        if not t or t in _STOPWORDS:
+            continue
+        t = _strip_korean_particle(t)
+        if len(t) >= 2 and t not in _STOPWORDS:
+            out.add(t)
+    return out
 
 
 def _title_jaccard(t1: str, t2: str) -> float:
