@@ -40,7 +40,13 @@ from src.logging_setup import get_logger, setup_logging
 from src.normalize import normalize_batch
 from src.publisher import publish
 from src.selector.followup import encode_embedding, find_followup
-from src.selector.score import IN_CYCLE_SIMHASH_GAP, is_recent_duplicate, pick_topics
+from src.selector.score import (
+    IN_CYCLE_SIMHASH_GAP,
+    IN_CYCLE_TITLE_JACCARD,
+    _max_title_jaccard,
+    is_recent_duplicate,
+    pick_topics,
+)
 from src.state.db import connect, migrate
 from src.state.repo import record_published, record_source_failure, record_source_success
 from src.utils.lockfile import LockBusy, cycle_lock
@@ -74,6 +80,7 @@ def _publish_one(
     log,
     blog: BlogProfile,
     in_cycle_simhashes: list[int],
+    in_cycle_titles: list[str],
     settings,
 ) -> bool:
     candidate = enrich_with_llm(candidate, categories_file=blog.categories_file)
@@ -81,13 +88,20 @@ def _publish_one(
     if is_recent_duplicate(candidate.simhash,
                             days=settings.duplicate_window_days,
                             blog_id=blog.id,
-                            embedding=candidate.embedding):
+                            embedding=candidate.embedding,
+                            title=candidate.event_title):
         log.info("article.skip_dup_after_enrich",
                  title=candidate.event_title, simhash=candidate.simhash, blog=blog.id)
         return False
     if any(hamming(candidate.simhash, h) <= IN_CYCLE_SIMHASH_GAP for h in in_cycle_simhashes):
         log.info("article.skip_in_cycle_dup",
                  title=candidate.event_title, simhash=candidate.simhash, blog=blog.id)
+        return False
+    title_jac = _max_title_jaccard(candidate.event_title, in_cycle_titles)
+    if title_jac >= IN_CYCLE_TITLE_JACCARD:
+        log.info("article.skip_in_cycle_title_dup",
+                 title=candidate.event_title, max_jaccard=round(title_jac, 2),
+                 blog=blog.id)
         return False
 
     log.info("article.enriched",
@@ -127,6 +141,7 @@ def _publish_one(
             blog_id=blog.id,
         )
     in_cycle_simhashes.append(candidate.simhash)
+    in_cycle_titles.append(article.title or candidate.event_title)
     return True
 
 
@@ -184,12 +199,15 @@ def run_for_blog(blog: BlogProfile) -> int:
         return 0
 
     in_cycle_simhashes: list[int] = []
+    in_cycle_titles: list[str] = []
     published_count = 0
     for idx, candidate in enumerate(candidates, 1):
         try:
             ok = _publish_one(
                 candidate, log=log, blog=blog,
-                in_cycle_simhashes=in_cycle_simhashes, settings=settings,
+                in_cycle_simhashes=in_cycle_simhashes,
+                in_cycle_titles=in_cycle_titles,
+                settings=settings,
             )
             if ok:
                 published_count += 1
@@ -219,7 +237,9 @@ def run_for_blog(blog: BlogProfile) -> int:
                 try:
                     ok = _publish_backlog_one(
                         topic, log=log, blog=blog,
-                        in_cycle_simhashes=in_cycle_simhashes, settings=settings,
+                        in_cycle_simhashes=in_cycle_simhashes,
+                        in_cycle_titles=in_cycle_titles,
+                        settings=settings,
                     )
                     if ok:
                         published_count += 1
@@ -243,6 +263,7 @@ def _publish_backlog_one(
     log,
     blog: BlogProfile,
     in_cycle_simhashes: list[int],
+    in_cycle_titles: list[str],
     settings,
 ) -> bool:
     """백로그 토픽 1개를 글로 작성 후 발행."""
@@ -262,6 +283,12 @@ def _publish_backlog_one(
 
     if any(hamming(fake.simhash, h) <= IN_CYCLE_SIMHASH_GAP for h in in_cycle_simhashes):
         log.info("backlog.skip_in_cycle_dup", topic_id=topic.id, topic=topic.topic)
+        return False
+    title_jac = _max_title_jaccard(topic.topic, in_cycle_titles)
+    if title_jac >= IN_CYCLE_TITLE_JACCARD:
+        log.info("backlog.skip_in_cycle_title_dup",
+                 topic_id=topic.id, topic=topic.topic,
+                 max_jaccard=round(title_jac, 2))
         return False
 
     log.info("backlog.writing", topic_id=topic.id, topic=topic.topic,
@@ -292,6 +319,7 @@ def _publish_backlog_one(
         )
     mark_published(topic.id, str(info.post_path))
     in_cycle_simhashes.append(fake.simhash)
+    in_cycle_titles.append(article.title or topic.topic)
     return True
 
 

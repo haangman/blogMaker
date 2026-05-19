@@ -8,6 +8,7 @@ V3: 다중 선정(pick_topics) + 일상 토픽 우선 + 중복 윈도우 확장.
 from __future__ import annotations
 
 import math
+import re
 from collections import Counter
 from datetime import timedelta
 
@@ -92,6 +93,55 @@ _PROFILE_WEIGHTS: dict[str, tuple[dict[str, float], float]] = {
 # simhash 64bit 에서 5 이하면 거의 같은 사건으로 본다.
 IN_CYCLE_SIMHASH_GAP = 5
 
+# 제목 정규화된 토큰 자카드 임계. simhash 가 흔들려도 제목이 같은 사건이면
+# 잡아내기 위한 보조 가드 — in-cycle 중복 + 발행 이력 중복 둘 다 사용.
+# 0.5 = 토큰 절반 이상 겹치면 같은 사건.
+IN_CYCLE_TITLE_JACCARD = 0.5
+RECENT_TITLE_JACCARD = 0.6   # 30일 발행 이력과 비교할 때는 조금 더 엄격
+
+
+_STOPWORDS = {
+    # 한국어 조사·일반 단어 + 영어 stop words — 자카드 노이즈 줄임
+    "은", "는", "이", "가", "을", "를", "의", "에", "와", "과", "도", "만",
+    "the", "a", "an", "of", "and", "or", "for", "to", "in", "on", "at",
+    "is", "are", "was", "were", "be", "been", "with", "by", "from",
+}
+
+
+def _title_norm(title: str) -> set[str]:
+    """제목을 정규화된 토큰 집합으로. 소문자 + 특수문자 제거 + stop words 제거.
+    토큰 길이 2 이상만 유지 (1글자 토큰은 노이즈)."""
+    if not title:
+        return set()
+    cleaned = re.sub(r"[^\w가-힣\s]+", " ", title.lower())
+    tokens = [t for t in cleaned.split() if len(t) >= 2 and t not in _STOPWORDS]
+    return set(tokens)
+
+
+def _title_jaccard(t1: str, t2: str) -> float:
+    s1, s2 = _title_norm(t1), _title_norm(t2)
+    if not s1 or not s2:
+        return 0.0
+    return len(s1 & s2) / len(s1 | s2)
+
+
+def _max_title_jaccard(title: str, others: list[str]) -> float:
+    """주어진 제목과 others 리스트 중 가장 높은 자카드 값."""
+    if not title or not others:
+        return 0.0
+    s = _title_norm(title)
+    if not s:
+        return 0.0
+    best = 0.0
+    for o in others:
+        s2 = _title_norm(o)
+        if not s2:
+            continue
+        j = len(s & s2) / len(s | s2)
+        if j > best:
+            best = j
+    return best
+
 
 def _category_24h_count(blog_id: str | None = None) -> Counter:
     cats: Counter = Counter()
@@ -119,12 +169,14 @@ def is_recent_duplicate(
     blog_id: str | None = None,
     embedding: np.ndarray | None = None,
     cosine_threshold: float = DUPLICATE_COSINE_THRESHOLD,
+    title: str | None = None,
+    title_jaccard_threshold: float = RECENT_TITLE_JACCARD,
 ) -> bool:
-    """발행 이력 안에서 simhash 또는 임베딩 코사인 매치 검사.
+    """발행 이력 안에서 simhash · 임베딩 코사인 · 제목 토큰 자카드 매치 검사.
 
-    simhash 만으로는 cluster_merge 가 매번 다른 제목/요약을 만들 때 흔들리므로,
-    임베딩 코사인 (cluster_embedding BLOB) 도 함께 비교한다.
-    둘 중 하나라도 매치되면 중복으로 판정.
+    cluster_merge 가 같은 사건에 다른 제목/요약을 만들 때 simhash·임베딩이
+    모두 흔들릴 수 있어, 정규화된 제목 토큰 자카드를 세 번째 신호로 추가.
+    셋 중 하나라도 매치되면 중복.
     """
     if days is None:
         days = get_settings().duplicate_window_days
@@ -132,19 +184,22 @@ def is_recent_duplicate(
     with connect() as conn:
         if blog_id:
             rows = conn.execute(
-                "SELECT cluster_simhash, cluster_embedding FROM published "
+                "SELECT cluster_simhash, cluster_embedding, title FROM published "
                 "WHERE published_at >= ? AND blog_id = ?",
                 (since, blog_id),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT cluster_simhash, cluster_embedding FROM published WHERE published_at >= ?",
+                "SELECT cluster_simhash, cluster_embedding, title FROM published "
+                "WHERE published_at >= ?",
                 (since,),
             ).fetchall()
 
     q_norm: np.ndarray | None = None
     if embedding is not None and embedding.size:
         q_norm = embedding / (np.linalg.norm(embedding) + 1e-9)
+
+    title_tokens = _title_norm(title) if title else None
 
     for r in rows:
         # 1) simhash
@@ -159,6 +214,13 @@ def is_recent_duplicate(
             if v is not None and v.size == q_norm.size:
                 v_norm = v / (np.linalg.norm(v) + 1e-9)
                 if float(np.dot(q_norm, v_norm)) >= cosine_threshold:
+                    return True
+        # 3) 제목 토큰 자카드 — simhash·임베딩이 흔들려도 같은 제목이면 잡힘
+        if title_tokens:
+            other_tokens = _title_norm(r["title"] or "")
+            if other_tokens:
+                jac = len(title_tokens & other_tokens) / len(title_tokens | other_tokens)
+                if jac >= title_jaccard_threshold:
                     return True
     return False
 
@@ -230,6 +292,7 @@ def pick_topics(
             days=settings.duplicate_window_days,
             blog_id=blog_id,
             embedding=c.embedding,
+            title=c.event_title,
         ):
             log.info("selector.dropped_duplicate",
                      title=c.event_title, simhash=c.simhash,
@@ -244,6 +307,13 @@ def pick_topics(
     picked: list[TopicCluster] = []
     for sc, c in scored:
         if any(hamming(c.simhash, p.simhash) <= IN_CYCLE_SIMHASH_GAP for p in picked):
+            continue
+        # 제목 자카드 가드 — simhash 가 흔들려도 정규화된 제목이 비슷하면 skip
+        max_jac = _max_title_jaccard(c.event_title, [p.event_title for p in picked])
+        if max_jac >= IN_CYCLE_TITLE_JACCARD:
+            log.info("selector.skip_in_cycle_title_dup",
+                     title=c.event_title, max_jaccard=round(max_jac, 2),
+                     blog=blog_id)
             continue
         picked.append(c)
         log.info("selector.picked",
