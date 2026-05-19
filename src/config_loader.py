@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     pexels_api_key: str = ""
     reddit_user_agent: str = "blogmaker/0.1"
 
+    # 이미지 공급자 우선순위.
+    #   auto         — pollinations(AI 생성) → unsplash → pexels (기본)
+    #   pollinations — Pollinations 만 사용 (실패 시 이미지 없음)
+    #   unsplash     — Unsplash → Pexels (기존 동작, AI 생성 안 함)
+    image_provider: str = "auto"
+
     jblog_path: str = "../J-Blog"
     git_user_name: str = ""
     git_user_email: str = ""

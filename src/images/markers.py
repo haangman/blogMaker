@@ -14,7 +14,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from src.images import pexels, unsplash
+from src.config_loader import get_settings
+from src.images import pexels, pollinations, unsplash
 from src.logging_setup import get_logger
 from src.publisher.models import ImageRef
 
@@ -62,12 +63,13 @@ def remove_marker_lines(body: str) -> str:
 
 
 def fetch_for_markers(markers: list[ImageMarker], *, limit: int = 3) -> list[ImageRef]:
-    """마커별로 Unsplash → Pexels 순으로 시도. 결과 ImageRef 리스트.
+    """마커별로 image_provider 우선순위에 따라 시도. 결과 ImageRef 리스트.
 
     한 글의 본문 이미지 수는 limit 으로 상한 (시각적 산만함 방지).
     """
     results: list[ImageRef] = []
     seen_keywords: set[str] = set()
+    provider = (get_settings().image_provider or "auto").lower()
 
     for marker in markers[:limit]:
         kw = marker.keyword.strip()
@@ -76,7 +78,16 @@ def fetch_for_markers(markers: list[ImageMarker], *, limit: int = 3) -> list[Ima
             continue
         seen_keywords.add(kw.lower())
 
-        result = unsplash.search_and_download(kw) or pexels.search_and_download(kw)
+        if provider == "pollinations":
+            result = pollinations.search_and_download(kw)
+        elif provider == "unsplash":
+            result = unsplash.search_and_download(kw) or pexels.search_and_download(kw)
+        else:  # auto
+            result = (
+                pollinations.search_and_download(kw)
+                or unsplash.search_and_download(kw)
+                or pexels.search_and_download(kw)
+            )
         if not result:
             log.info("marker.image_not_found", keyword=kw)
             continue
