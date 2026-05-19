@@ -195,14 +195,21 @@ def ask(
     settings = get_settings()
     timeout_s = timeout_s or settings.claude_cli_timeout_sec
 
+    # image_quality_gate 같은 보조 검사는 quota 측정에서 제외 — 글 생성과 합산 시 한도 초과 위험.
+    # _cycle_call_count: quota 대상 호출 (글 생성/분류 등). 이 변수만 사용자에게 보이는 사이클 통계.
+    # hard cap 은 모든 호출 합산 (무한루프 방어용) — limit * 4.
+    _NON_QUOTA_PURPOSES = {"image_quality_gate"}
+    counts_toward_quota = purpose not in _NON_QUOTA_PURPOSES
+
     limit = settings.max_llm_calls_per_cycle
-    if limit and _cycle_call_count >= limit:
+    if counts_toward_quota and limit and _cycle_call_count >= limit:
         log.error("llm.cycle_quota_exceeded", count=_cycle_call_count, limit=limit, purpose=purpose)
         raise CycleQuotaExceeded(
             f"한 사이클 LLM 호출 상한 초과 ({_cycle_call_count}/{limit}). "
             f"의도치 않은 폭주로 의심됨 — 사이클을 중단합니다."
         )
-    _cycle_call_count += 1
+    if counts_toward_quota:
+        _cycle_call_count += 1
 
     tmp_system: Path | None = None
     try:

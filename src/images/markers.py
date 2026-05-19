@@ -62,11 +62,20 @@ def remove_marker_lines(body: str) -> str:
     return cleaned
 
 
-def fetch_for_markers(markers: list[ImageMarker], *, limit: int = 3) -> list[ImageRef]:
+def fetch_for_markers(
+    markers: list[ImageMarker],
+    *,
+    limit: int = 3,
+    title: str = "",
+    summary: str = "",
+) -> list[ImageRef]:
     """마커별로 image_provider 우선순위에 따라 시도. 결과 ImageRef 리스트.
 
-    한 글의 본문 이미지 수는 limit 으로 상한 (시각적 산만함 방지).
+    auto 모드에서 Pollinations 결과는 image_check 게이트 통과해야 사용,
+    실패 시 Unsplash → Pexels 폴백.
     """
+    from src.quality.image_check import check_image  # 순환 import 회피
+
     results: list[ImageRef] = []
     seen_keywords: set[str] = set()
     provider = (get_settings().image_provider or "auto").lower()
@@ -80,14 +89,26 @@ def fetch_for_markers(markers: list[ImageMarker], *, limit: int = 3) -> list[Ima
 
         if provider == "pollinations":
             result = pollinations.search_and_download(kw)
+            if result and title:
+                ok, reason = check_image(result[0], title=title, summary=summary, alt=kw)
+                if not ok:
+                    log.info("marker.gate_failed_no_fallback", keyword=kw, reason=reason)
+                    # pollinations only — 폴백 없음
         elif provider == "unsplash":
             result = unsplash.search_and_download(kw) or pexels.search_and_download(kw)
-        else:  # auto
-            result = (
-                pollinations.search_and_download(kw)
-                or unsplash.search_and_download(kw)
-                or pexels.search_and_download(kw)
-            )
+        else:  # auto — Pollinations 게이트 + 실패 시 stock 폴백
+            result = None
+            ai = pollinations.search_and_download(kw)
+            if ai and title:
+                ok, reason = check_image(ai[0], title=title, summary=summary, alt=kw)
+                if ok:
+                    result = ai
+                else:
+                    log.info("marker.gate_failed_fallback_to_stock", keyword=kw, reason=reason)
+            elif ai:
+                result = ai
+            if result is None:
+                result = unsplash.search_and_download(kw) or pexels.search_and_download(kw)
         if not result:
             log.info("marker.image_not_found", keyword=kw)
             continue

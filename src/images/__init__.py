@@ -14,6 +14,7 @@ from src.images.markers import extract_markers, fetch_for_markers
 from src.llm import ClaudeCLIError, ask
 from src.logging_setup import get_logger
 from src.publisher.models import ArticleDraft, ImageRef
+from src.quality.image_check import check_image
 
 log = get_logger("images")
 
@@ -68,27 +69,54 @@ def _header_keywords(cluster: TopicCluster, body_excerpt: str = "") -> str:
         return cluster.category
 
 
-def _try_fetch_one(query: str) -> ImageRef | None:
-    """이미지 한 장. config 의 image_provider 에 따라 공급자 순서 분기.
-       auto: pollinations → unsplash → pexels
-       pollinations: pollinations 만
-       unsplash: unsplash → pexels (AI 생성 안 함)
+def _try_fetch_one(
+    query: str,
+    *,
+    title: str = "",
+    summary: str = "",
+) -> ImageRef | None:
+    """이미지 한 장. image_provider 에 따라 chain.
+       auto: pollinations → unsplash → pexels (실패한 결과는 next 로 폴백)
+
+    title 이 주어지면 첫 결과(Pollinations 같은 AI 생성)에 대해 image_check 게이트.
+    실패 시 다음 provider 로 폴백. 두 번째 이후 provider 는 자연 사진이라 재검사 생략.
     """
     provider = (get_settings().image_provider or "auto").lower()
-    result = None
+
     if provider == "pollinations":
         result = pollinations.search_and_download(query)
+        if result and title:
+            ok, reason = check_image(result[0], title=title, summary=summary, alt=query)
+            if not ok:
+                log.info("image.gate_failed_no_fallback", query=query, reason=reason)
+                # pollinations only 모드라 폴백 없음
+        if not result:
+            return None
+        local_path, meta = result
     elif provider == "unsplash":
         result = unsplash.search_and_download(query) or pexels.search_and_download(query)
-    else:  # auto (기본)
-        result = (
-            pollinations.search_and_download(query)
-            or unsplash.search_and_download(query)
-            or pexels.search_and_download(query)
-        )
-    if not result:
-        return None
-    local_path, meta = result
+        if not result:
+            return None
+        local_path, meta = result
+    else:  # auto — Pollinations 만 게이트, 폴백은 무조건 통과
+        local_path = None
+        meta = None
+        ai_result = pollinations.search_and_download(query)
+        if ai_result and title:
+            ok, reason = check_image(ai_result[0], title=title, summary=summary, alt=query)
+            if ok:
+                local_path, meta = ai_result
+            else:
+                log.info("image.gate_failed_fallback_to_stock", query=query, reason=reason)
+        elif ai_result:
+            local_path, meta = ai_result
+        # 게이트 실패 또는 Pollinations 결과 없음 → Unsplash → Pexels
+        if local_path is None:
+            stock = unsplash.search_and_download(query) or pexels.search_and_download(query)
+            if not stock:
+                return None
+            local_path, meta = stock
+
     return ImageRef(
         local_path=local_path,
         alt=meta.get("alt") or query,
@@ -117,7 +145,7 @@ def attach_images(article: ArticleDraft, cluster: TopicCluster) -> None:
     # 헤더 이미지 (1장) — 글 도입부를 보고 키워드 결정 (장면 매칭 정확도 ↑)
     header_kw = _header_keywords(cluster, body_excerpt=article.body_markdown[:600])
     log.info("images.header_query", q=header_kw)
-    header = _try_fetch_one(header_kw)
+    header = _try_fetch_one(header_kw, title=article.title or "", summary=article.summary or "")
     if header:
         images.append(header)
         used_keywords.add(header_kw.lower())
@@ -129,7 +157,11 @@ def attach_images(article: ArticleDraft, cluster: TopicCluster) -> None:
     markers = extract_markers(article.body_markdown)
     log.info("images.markers_found", n=len(markers))
     body_images: list[ImageRef] = []
-    for img in fetch_for_markers(markers, limit=5):
+    for img in fetch_for_markers(
+        markers, limit=5,
+        title=article.title or "",
+        summary=article.summary or "",
+    ):
         kw = (img.marker_keyword or "").lower()
         sig = _signature(img)
         if kw and kw in used_keywords:
