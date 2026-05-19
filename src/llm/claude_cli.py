@@ -100,7 +100,13 @@ def _build_command(
     reraise=True,
 )
 def _invoke(cmd: list[str], stdin_text: str, timeout_s: int) -> dict:
-    log.debug("llm.invoke", cmd=cmd[:3] + ["..."], stdin_chars=len(stdin_text))
+    # cmd 전체 길이 (Windows CMD 8KB 한계 추적용)
+    cmd_total_chars = sum(len(c) for c in cmd)
+    log.debug("llm.invoke",
+              cmd=cmd[:3] + ["..."],
+              stdin_chars=len(stdin_text),
+              cmd_total_chars=cmd_total_chars,
+              cmd_argc=len(cmd))
     try:
         proc = subprocess.run(
             cmd,
@@ -115,8 +121,13 @@ def _invoke(cmd: list[str], stdin_text: str, timeout_s: int) -> dict:
         raise ClaudeCLIError(f"timeout after {timeout_s}s") from e
 
     if proc.returncode != 0:
+        stderr_snip = (proc.stderr or "").strip()[:500]
+        stdout_snip = (proc.stdout or "").strip()[:300]
+        # stderr 비어있고 stdout 도 비어있는 케이스가 가장 진단 어려움 — 가능한 모든 정보 캡처
         raise ClaudeCLIError(
-            f"exit={proc.returncode}: {proc.stderr.strip()[:500]}"
+            f"exit={proc.returncode}: stderr={stderr_snip!r} "
+            f"stdout={stdout_snip!r} stdin_chars={len(stdin_text)} "
+            f"cmd_chars={cmd_total_chars}"
         )
     out = proc.stdout.strip()
     if not out:

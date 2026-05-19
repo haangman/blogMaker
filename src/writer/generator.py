@@ -67,7 +67,16 @@ def write_article(
             resp = ask(user, system_prompt=system, model="opus",
                        purpose=f"write_attempt_{attempt}")
         except ClaudeCLIError as e:
-            log.warning("writer.llm_failed", attempt=attempt, error=str(e))
+            # 실패 분석에 필요한 prompt 사이즈 + 토픽 정보를 함께 기록.
+            log.warning(
+                "writer.llm_failed",
+                attempt=attempt,
+                error=str(e),
+                user_chars=len(user),
+                system_chars=len(system),
+                title=getattr(cluster, "event_title", "")[:80],
+                blog=blog.id if blog else None,
+            )
             with connect() as conn:
                 record_attempt(
                     conn,
